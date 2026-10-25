@@ -1,7 +1,8 @@
 /* Crsek-09 — networking layer.
    Real peer-to-peer multiplayer over WebRTC. The room host is authoritative:
    guests send intents to the host, the host runs the engine and broadcasts state.
-   Room codes map to deterministic peer ids, so no game server is required. */
+   Room codes map to deterministic peer ids, so no game server is required.
+   Voice chat rides the same PeerJS connection as a second, audio-only channel. */
 (function (global) {
   'use strict';
 
@@ -32,6 +33,7 @@
       this.myId = null;
       this.roomCode = null;
       this.slot = null;
+      this.voice = { stream: null, calls: new Map(), audios: new Map(), on: false };
     }
 
     on(evt, fn) { (this.handlers[evt] = this.handlers[evt] || []).push(fn); return this; }
@@ -49,6 +51,7 @@
         else cb(new Error(e.type || 'Network error'));
       });
       peer.on('connection', (conn) => this._adopt(conn));
+      this._wireVoice(peer);
       return peer;
     }
 
@@ -67,6 +70,7 @@
         this.slot = attempt;
         this.myId = id;
         peer.on('connection', (conn) => this._adopt(conn));
+        this._wireVoice(peer);
         cb(null, attempt);
       });
       peer.on('error', (e) => {
@@ -87,6 +91,7 @@
       conn.on('data', (data) => this.fire('msg', { peerId: conn.peer, data }));
       conn.on('close', () => {
         this.conns.delete(conn.peer);
+        this._dropAudio(conn.peer);
         this.fire('peerLeave', { peerId: conn.peer });
       });
       conn.on('error', () => {});
@@ -98,6 +103,7 @@
       this.roomCode = code;
       const peer = new Peer(PREFIX + 'g-' + code + '-' + rid(), peerOpts(1));
       this.peer = peer;
+      this._wireVoice(peer);
       let done = false;
       peer.on('open', (id) => {
         this.myId = id;
@@ -121,15 +127,12 @@
       this.isHost = false;
       const peer = new Peer(PREFIX + 'g-q-' + rid(), peerOpts(0));
       this.peer = peer;
+      this._wireVoice(peer);
       let done = false;
       peer.on('open', () => {
         this.myId = peer.id;
         const tries = [];
-        const finish = (err, slot) => {
-          if (done) return;
-          done = true;
-          cb(err, slot);
-        };
+        const finish = (err, slot) => { if (done) return; done = true; cb(err, slot); };
         for (let slot = 1; slot <= SLOTS; slot++) {
           const conn = peer.connect(PREFIX + 'q-' + slot, { reliable: true });
           tries.push(conn);
@@ -154,6 +157,73 @@
       conn.on('close', () => this.fire('disconnected', { peerId: conn.peer }));
     }
 
+    // ---------- voice ----------
+    _wireVoice(peer) {
+      peer.on('call', (call) => {
+        try { call.answer(this.voice.stream || new MediaStream()); } catch (e) {}
+        this._adoptCall(call, call.peer);
+      });
+    }
+
+    _adoptCall(call, peerId) {
+      this.voice.calls.set(peerId, call);
+      call.on('stream', (stream) => this._playAudio(peerId, stream));
+      call.on('close', () => { this.voice.calls.delete(peerId); this._dropAudio(peerId); });
+      call.on('error', () => {});
+    }
+
+    _playAudio(peerId, stream) {
+      let a = this.voice.audios.get(peerId);
+      if (!a) {
+        a = document.createElement('audio');
+        a.autoplay = true; a.playsInline = true; a.setAttribute('playsinline', '');
+        document.body.appendChild(a);
+        this.voice.audios.set(peerId, a);
+      }
+      a.srcObject = stream;
+      const pr = a.play();
+      if (pr && pr.catch) pr.catch(() => {});
+      this.fire('voice', { peerId: peerId, on: true });
+    }
+
+    _dropAudio(peerId) {
+      const a = this.voice.audios.get(peerId);
+      if (a) { try { a.srcObject = null; a.remove(); } catch (e) {} this.voice.audios.delete(peerId); }
+      this.fire('voice', { peerId: peerId, on: false });
+    }
+
+    async enableMic() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('Microphone not available');
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+      this.voice.stream = stream;
+      this.voice.on = true;
+      return stream;
+    }
+
+    disableMic() {
+      this.voice.on = false;
+      if (this.voice.stream) {
+        this.voice.stream.getTracks().forEach((t) => t.stop());
+        this.voice.stream = null;
+      }
+      this.voice.calls.forEach((c) => { try { c.close(); } catch (e) {} });
+      this.voice.calls.clear();
+      [...this.voice.audios.keys()].forEach((p) => this._dropAudio(p));
+    }
+
+    // Call every peer we are not already talking to (mesh, small squads only).
+    syncVoice(peerIds) {
+      if (!this.voice.on || !this.peer) return;
+      (peerIds || []).forEach((pid) => {
+        if (!pid || pid === this.myId) return;
+        if (this.voice.calls.has(pid)) return;
+        try {
+          const call = this.peer.call(pid, this.voice.stream);
+          this._adoptCall(call, pid);
+        } catch (e) {}
+      });
+    }
+
     // ---------- send ----------
     send(peerId, obj) {
       const c = this.conns.get(peerId);
@@ -167,7 +237,13 @@
       const first = this.conns.keys().next();
       return first.done ? null : first.value;
     }
+    peerIds() {
+      const ids = [...this.conns.keys()];
+      if (this.myId) ids.push(this.myId);
+      return ids;
+    }
     destroy() {
+      this.disableMic();
       this.conns.forEach((c) => { try { c.close(); } catch (e) {} });
       this.conns.clear();
       if (this.peer) { try { this.peer.destroy(); } catch (e) {} }

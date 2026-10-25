@@ -140,7 +140,7 @@
       const mine = f.ownerId && f.ownerId === myPid;
       ctx.beginPath();
       ctx.arc(p.x, p.y, mine ? 8.5 : 7, 0, Math.PI * 2);
-      ctx.fillStyle = f.keeper ? '#f0b429' : mine ? '#4fc3f7' : '#e8eef2';
+      ctx.fillStyle = f.keeper ? '#f0b429' : (f.kit || (mine ? '#4fc3f7' : '#e8eef2'));
       ctx.fill();
       ctx.lineWidth = mine ? 2.5 : 1.5;
       ctx.strokeStyle = mine ? '#ffffff' : 'rgba(0,0,0,0.45)';

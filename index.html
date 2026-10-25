@@ -53,7 +53,10 @@
         <button class="btn" id="joinBtn">Join Room</button>
       </div>
       <button class="btn ghost wide" id="practiceBtn">Practice vs AI <small>solo, offline</small></button>
+      <div class="row-label">Your kit</div>
+      <div class="kit-row" id="kitRow"></div>
     </div>
+    <p class="fine center" id="statsLine"></p>
     <p class="fine center">Everyone on the field is a real player on their own phone.</p>
   </section>
 
@@ -90,6 +93,7 @@
   <!-- 5. MATCH -->
   <section class="screen match" id="screen-match">
     <canvas id="pitch"></canvas>
+    <canvas id="pitch3d"></canvas>
 
     <div class="hud" id="hud">
       <div class="hud-top">
@@ -98,6 +102,7 @@
         <div class="req" id="reqLine"></div>
       </div>
       <div class="over-dots" id="overDots"></div>
+      <div class="free-hit hidden" id="freeHit">FREE HIT</div>
       <div class="players-line">
         <span id="batterLine">—</span>
         <span class="dot">•</span>
@@ -117,6 +122,13 @@
     <div class="match-actions">
       <button class="icon-btn" id="scorecardBtn">☰</button>
       <button class="icon-btn" id="chatBtn">💬</button>
+      <button class="icon-btn" id="camBtn" title="Camera">◎</button>
+      <button class="icon-btn view-btn" id="viewBtn" title="3D / 2D">3D</button>
+    </div>
+
+    <div class="throw-row hidden" id="throwRow">
+      <button class="gbtn hot" data-end="striker">THROW · STRIKER'S END</button>
+      <button class="gbtn hot" data-end="nonstriker">THROW · NON-STRIKER'S END</button>
     </div>
 
     <div class="toss-overlay hidden" id="tossOverlay">
@@ -157,7 +169,8 @@
         <li><b>Batting:</b> only the striker on strike bats. Drag the stick to aim, tap a shot. Timing beats power — hit as the ball arrives.</li>
         <li><b>Non-striker:</b> call the extra run with RUN while the ball is live.</li>
         <li><b>Bowling:</b> one bowler per over. Pick line with the stick, pick length and type, then stop the release meter in the green.</li>
-        <li><b>Fielding:</b> you are given one fielder. Move with the stick, tap CATCH when the ball comes to you, DIVE to extend your reach.</li>
+        <li><b>Fielding:</b> you are given one fielder. Move with the stick, tap CATCH when the ball comes to you, DIVE to extend your reach. When you pick the ball up, throw at either end to go for a run-out.</li>
+        <li><b>Camera:</b> the ◎ button cycles broadcast, batter and top-down. The 3D/2D button switches between the stadium and the classic flat view.</li>
         <li><b>Keeper</b> is always AI so nobody is stuck behind the stumps.</li>
       </ul>
       <button class="btn wide" id="helpClose">Got it</button>
@@ -167,11 +180,14 @@
   <div class="net-banner hidden" id="netBanner"></div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+<script>if(!window.THREE){document.write('<script src="https://unpkg.com/three@0.149.0/build/three.min.js"><\/script>');}</script>
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>if(!window.Peer){document.write('<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"><\/script>');}</script>
 <script src="js/engine.js"></script>
 <script src="js/net.js"></script>
 <script src="js/view.js"></script>
+<script src="js/view3d.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

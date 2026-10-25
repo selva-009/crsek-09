@@ -34,29 +34,29 @@
     defend: { power: 0.32, air: 0, risk: 0.01, label: 'Defend' }
   };
 
-  const BOUNDARY = 66;      // metres from centre
+  const BOUNDARY = 66;
   const BATSMAN_POS = { x: 0, y: 10 };
   const BOWLER_POS = { x: 0, y: -10 };
-  const IDEAL_CONTACT = 0.60; // seconds after release
+  const STUMPS = { striker: { x: 0, y: 10 }, nonstriker: { x: 0, y: -10 } };
+  const IDEAL_CONTACT = 0.60;
   const CONTACT_WINDOW = 0.30;
 
   function mkPlayer(o) {
     return {
-      id: o.id, name: o.name, bot: !!o.bot,
+      id: o.id, name: o.name, bot: !!o.bot, kit: o.kit || '#7fd1ae',
       r: 0, b: 0, fours: 0, sixes: 0, out: false, how: null,
-      bBalls: 0, bRuns: 0, bWkts: 0, bMaidens: 0
+      bBalls: 0, bRuns: 0, bWkts: 0
     };
   }
 
   class MatchRunner {
     constructor(cfg, emit) {
       this.emit = emit || function () {};
-      this.format = cfg.format;          // 1 | 2 | 4
+      this.format = cfg.format;
       this.overs = cfg.overs;
       this.code = cfg.code || '';
       this.phase = 'toss';
       this.timers = [];
-      this.seq = 0;
       this.teams = cfg.teams.map((t, i) => ({
         name: t.name,
         idx: i,
@@ -69,7 +69,6 @@
       this.target = null;
       this.strikerIdx = 0;
       this.nonStrikerIdx = 1;
-      this.nextBatIdx = 2;
       this.bowlerIdx = 0;
       this.lastBowlerIdx = -1;
       this.balls = 0;
@@ -82,11 +81,11 @@
       this.captainId = null;
       this.result = null;
       this.forceBatFirst = !!cfg.forceBatFirst;
-      this.field = [];       // human fielder assignment map
       this.pendingDelivery = null;
       this.pendingShot = null;
       this.ballStart = 0;
-      this.inplayStart = 0;
+      this.freeHit = false;
+      this.mom = null;
     }
 
     // ---------- helpers ----------
@@ -99,13 +98,31 @@
       for (const t of this.teams) for (const p of t.players) if (p.id === id) return p;
       return null;
     }
-    teamOf(id) {
-      for (const t of this.teams) if (t.players.some((p) => p.id === id)) return t;
-      return null;
-    }
     later(ms, fn) { const t = setTimeout(fn, ms); this.timers.push(t); return t; }
     clearTimers() { this.timers.forEach(clearTimeout); this.timers = []; }
     stop() { this.clearTimers(); this.phase = 'done'; }
+
+    // ---------- seat control (disconnect / reconnect) ----------
+    setBot(playerId, isBot) {
+      const p = this.playerById(playerId);
+      if (!p) return false;
+      p.bot = !!isBot;
+      if (!isBot) p.left = false;
+      this.broadcast();
+      // a human taking over the strike should not be auto-played; a bot taking
+      // over the strike must play the ball that is already in the air.
+      const s = this.striker();
+      if (s && s.id === playerId && isBot && (this.phase === 'flight')) this.botBat();
+      const b = this.bowler();
+      if (b && b.id === playerId && isBot && this.phase === 'delivery' && !this.pendingDelivery) {
+        this.later(700, () => {
+          if (this.phase === 'delivery' && !this.pendingDelivery) {
+            this.setDelivery(playerId, { line: rand(-0.4, 0.4), length: 'good', type: 'pace', release: 0.5 });
+          }
+        });
+      }
+      return true;
+    }
 
     // ---------- setup ----------
     start() {
@@ -119,15 +136,11 @@
         return;
       }
       this.msg = 'Toss won by ' + this.teams[this.tossWinner].name;
-      this.captainId = this.teams[this.tossWinner].players.find((p) => !p.bot) ?
-        this.teams[this.tossWinner].players.find((p) => !p.bot).id : null;
-      this.broadcast();
       const cap = this.teams[this.tossWinner].players.find((p) => !p.bot);
-      if (!cap) {
-        this.later(1200, () => this.chooseBat(Math.random() < 0.5));
-      } else {
-        this.later(9000, () => { if (this.phase === 'toss') this.chooseBat(Math.random() < 0.5); });
-      }
+      this.captainId = cap ? cap.id : null;
+      this.broadcast();
+      if (!cap) this.later(1200, () => this.chooseBat(Math.random() < 0.5));
+      else this.later(9000, () => { if (this.phase === 'toss') this.chooseBat(Math.random() < 0.5); });
     }
 
     chooseBat(batFirst) {
@@ -140,19 +153,17 @@
       this.clearTimers();
       const bt = this.bat();
       bt.score = { r: 0, w: 0, balls: 0, extras: 0 };
-      bt.players.forEach((p) => {
-        p.r = 0; p.b = 0; p.fours = 0; p.sixes = 0; p.out = false; p.how = null;
-      });
+      bt.players.forEach((p) => { p.r = 0; p.b = 0; p.fours = 0; p.sixes = 0; p.out = false; p.how = null; });
       this.bowlTeam().players.forEach((p) => { p.bBalls = 0; p.bRuns = 0; p.bWkts = 0; });
       this.balls = 0;
       this.thisOver = [];
+      this.freeHit = false;
       this.strikerIdx = 0;
       this.nonStrikerIdx = 1 % bt.players.length;
-      this.nextBatIdx = bt.players.length > 2 ? 2 : -1;
       this.lastBowlerIdx = -1;
       this.innings++;
       this.phase = 'ready';
-      this.msg = this.innings === 1 ? 'Innings 1 begins' : 'Chasing ' + (this.target) + ' to win';
+      this.msg = this.innings === 1 ? 'Innings 1 begins' : 'Chasing ' + this.target + ' to win';
       this.pickBowler();
       this.placeField();
       this.broadcast();
@@ -163,7 +174,7 @@
       const bt = this.bowlTeam();
       const humans = [];
       bt.players.forEach((p, i) => { if (!p.bot) humans.push(i); });
-      let chosen = -1;
+      let chosen;
       if (humans.length) {
         const eligible = humans.filter((i) => i !== this.lastBowlerIdx);
         chosen = eligible.length ? pick(eligible) : humans[0];
@@ -175,22 +186,17 @@
 
     placeField() {
       const bt = this.bowlTeam();
-      const spots = FIELD_SPOTS.slice();
       const humans = bt.players.filter((p) => !p.bot);
-      this.fielders = spots.map((s) => ({
+      this.fielders = FIELD_SPOTS.map((s) => ({
         key: s.key, name: s.name, keeper: !!s.keeper,
         x: Math.sin((s.ang * Math.PI) / 180) * s.r,
         y: BATSMAN_POS.y - Math.cos((s.ang * Math.PI) / 180) * s.r,
-        homeX: Math.sin((s.ang * Math.PI) / 180) * s.r,
-        homeY: BATSMAN_POS.y - Math.cos((s.ang * Math.PI) / 180) * s.r,
         ownerId: null, bot: true
       }));
-      // Keeper is never human-controlled. Other spots are handed to the fielding
-      // team's human players, deepest spots first so the far field is played.
-      const free = this.fielders.filter((f) => !f.keeper).sort((a, b) => b.homeY - a.homeY);
+      const free = this.fielders.filter((f) => !f.keeper).sort((a, b) => b.y - a.y);
       humans.forEach((p, i) => {
         const f = free[i % free.length];
-        if (f) { f.ownerId = p.id; f.bot = false; f.name = p.name; }
+        if (f) { f.ownerId = p.id; f.bot = false; f.name = p.name; f.kit = p.kit; }
       });
     }
 
@@ -204,15 +210,17 @@
       this.msg = 'Bowler runs in';
       this.broadcast();
       const b = this.bowler();
+      if (!b) return;
       if (b.bot) {
         this.later(700, () => {
+          const lengths = ['yorker', 'full', 'good', 'good', 'short'];
           this.setDelivery(b.id, {
-            line: rand(-0.8, 0.8), length: pick(['yorker', 'full', 'good', 'good', 'short']),
-            type: pick(['pace', 'swing', 'spin', 'slower']), release: rand(0.2, 0.9)
+            line: rand(-0.75, 0.75), length: pick(lengths),
+            type: pick(['pace', 'swing', 'spin', 'slower']), release: rand(0.22, 0.88)
           });
         });
       } else {
-        this.later(9000, () => {
+        this.later(8000, () => {
           if (this.phase === 'delivery') this.setDelivery(b.id, { line: rand(-0.4, 0.4), length: 'good', type: 'pace', release: 0.3 });
         });
       }
@@ -220,13 +228,16 @@
 
     setDelivery(playerId, d) {
       if (this.phase !== 'delivery') return;
-      if (!this.bowler() || this.bowler().id !== playerId) return;
+      const bowler = this.bowler();
+      if (!bowler || bowler.id !== playerId) return;
       const rel = clamp(d.release == null ? 0.3 : d.release, 0, 1);
-      const acc = 1 - Math.abs(rel - 0.55) / 0.55;       // 1 = perfect release
-      const wide = Math.abs(d.line) > 0.9 || acc < 0.22;
+      const acc = 1 - Math.abs(rel - 0.55) / 0.55;
+      const overstep = rel < 0.1 || rel > 0.95;
+      const wide = !overstep && (Math.abs(d.line) > 0.92 || acc < 0.2);
       this.pendingDelivery = {
         line: clamp(d.line || 0, -1, 1), length: d.length || 'good',
-        type: d.type || 'pace', release: rel, accuracy: clamp(acc, 0, 1), wide: wide
+        type: d.type || 'pace', release: rel, accuracy: clamp(acc, 0, 1),
+        wide: wide, noBall: overstep
       };
       this.phase = 'flight';
       this.ballStart = Date.now();
@@ -240,16 +251,20 @@
 
     onArrival() {
       if (this.phase !== 'flight') return;
-      if (this.pendingDelivery && this.pendingDelivery.wide) return this.finishBall({ kind: 'wide', runs: 1 });
-      const s = this.pendingShot;
-      if (!s) {
-        // beaten — stumps check
-        const d = this.pendingDelivery;
+      const d = this.pendingDelivery;
+      if (d && d.noBall) return this.finishBall({ kind: 'noball', runs: 1 });
+      if (d && d.wide) return this.finishBall({ kind: 'wide', runs: 1 });
+      const shot = this.pendingShot;
+      if (!shot) {
         const atStumps = Math.abs(d.line) < 0.55 && ['yorker', 'full', 'good'].includes(d.length);
-        if (atStumps && Math.random() < 0.55) return this.finishBall({ kind: 'bowled', runs: 0 });
+        if (atStumps) {
+          const r = Math.random();
+          if (r < 0.5) return this.finishBall({ kind: 'bowled', runs: 0 });
+          if (r < 0.63) return this.finishBall({ kind: 'lbw', runs: 0 });
+        }
         return this.finishBall({ kind: 'dot', runs: 0, text: 'Beaten!' });
       }
-      this.startInPlay(s);
+      this.startInPlay(shot);
     }
 
     setShot(playerId, s) {
@@ -263,35 +278,38 @@
         dir: clamp(s.dir || 0, -180, 180),
         t: t
       };
-      const quality = clamp(1 - Math.abs(t - IDEAL_CONTACT) / CONTACT_WINDOW, 0, 1);
-      shot.quality = quality;
+      shot.quality = clamp(1 - Math.abs(t - IDEAL_CONTACT) / CONTACT_WINDOW, 0, 1);
       this.pendingShot = shot;
-      if (this.phase === 'flight' && t > IDEAL_CONTACT + CONTACT_WINDOW) this.onArrival();
-      else if (this.phase === 'flight') { /* will resolve on arrival */ }
-      else this.startInPlay(shot);
+      if (t > IDEAL_CONTACT + CONTACT_WINDOW) this.onArrival();
     }
 
-    // bot striker auto-plays
+    // Bot striker reads the delivery rather than swinging blind.
     botBat() {
       const s = this.striker();
       if (!s || !s.bot) return;
-      const good = Math.random() < 0.55;
-      const t = good ? rand(0.5, 0.7) : rand(0.3, 0.95);
-      const dir = pick([0, 0, 15, -15, 40, -40, 70, -70, 100, -100, 140]);
-      const type = pick(['drive', 'drive', 'loft', 'pull', 'sweep', 'defend']);
-      this.later(t * 1000, () => { if (!this.pendingShot) this.setShot(s.id, { dir, type }); });
+      const d = this.pendingDelivery || { length: 'good', line: 0 };
+      let type;
+      if (d.length === 'short') type = pick(['pull', 'pull', 'loft', 'drive']);
+      else if (d.length === 'yorker') type = pick(['defend', 'drive', 'defend']);
+      else if (d.length === 'full') type = pick(['drive', 'drive', 'loft', 'sweep']);
+      else type = pick(['drive', 'drive', 'defend', 'pull', 'sweep']);
+      const skill = 0.55 + Math.random() * 0.25;
+      const good = Math.random() < skill;
+      const t = good ? rand(0.53, 0.67) : rand(0.32, 0.95);
+      const dir = pick([0, 0, 12, -12, 35, -35, 65, -65, 100, -100, 140, -140]);
+      this.later(Math.max(120, t * 1000 - 40), () => {
+        if (!this.pendingShot && this.phase === 'flight') this.setShot(s.id, { dir, type });
+      });
     }
 
     startInPlay(shot) {
       this.phase = 'inplay';
-      this.inplayStart = Date.now();
       const d = this.pendingDelivery;
       const q = shot.quality;
       const def = SHOTS[shot.type];
       const power = def.power * (0.35 + 0.65 * q) * (0.85 + 0.3 * (d ? d.accuracy : 0.6));
       const dist = 12 + power * 58;
-      const ang = shot.dir;
-      const rad = (ang * Math.PI) / 180;
+      const rad = (shot.dir * Math.PI) / 180;
       const landing = {
         x: BATSMAN_POS.x + Math.sin(rad) * dist,
         y: BATSMAN_POS.y - Math.cos(rad) * dist
@@ -303,7 +321,6 @@
         landing, airborne, power, quality: q, shotType: shot.type, stopped: false,
         extraRuns: 0
       };
-      // edge / mishit
       if (q < 0.18) {
         this.ball.edge = true;
         this.ball.landing = { x: rand(-4, 4), y: BATSMAN_POS.y + rand(4, 12) };
@@ -323,27 +340,26 @@
       b.y = BATSMAN_POS.y + (b.landing.y - BATSMAN_POS.y) * p;
       b.z = b.airborne ? 1.2 + Math.sin(p * Math.PI) * (6 + b.power * 14) : 0.4;
 
-      // fielders react
+      // AI fielders chase the ball
       this.fielders.forEach((f) => {
-        if (f.ownerId) return;                      // human-controlled
+        if (f.ownerId) return;
         const dx = b.x - f.x, dy = b.y - f.y;
         const dd = Math.hypot(dx, dy);
-        if (dd > 0.5) {
-          const speed = f.keeper ? 7 : 6.5;
-          const step = speed * 0.05;
+        if (dd > 0.4) {
+          const step = (f.keeper ? 7.5 : 6.8) * 0.05;
           f.x += (dx / dd) * Math.min(step, dd);
           f.y += (dy / dd) * Math.min(step, dd);
         }
       });
 
       // catch check
-      if (b.airborne && !b.caught) {
+      if (b.airborne && !b.caught && !b.heldBy) {
         for (const f of this.fielders) {
           const dd = Math.hypot(b.x - f.x, b.y - f.y);
           const reach = f.catchReach || 2.6;
           if (dd < reach) {
             const human = !f.bot;
-            const success = human ? (f.catchPressed ? 0.92 : 0.0) : (0.55 + Math.min(0.3, (reach - dd) * 0.2));
+            const success = human ? (f.catchPressed ? 0.94 : 0.0) : (0.5 + Math.min(0.32, (reach - dd) * 0.22));
             if (success > 0.4 && Math.random() < success) {
               b.caught = true;
               return this.finishBall({ kind: 'caught', runs: 0, fielder: f.name });
@@ -351,16 +367,21 @@
           }
         }
       }
-      // ground interception
+      // ground interception — remember who picked it up (they may throw it in)
       if (!b.airborne && !b.stopped) {
         for (const f of this.fielders) {
           const dd = Math.hypot(b.x - f.x, b.y - f.y);
-          if (dd < (f.diveUntil > now ? 3.4 : 1.7)) { b.stopped = true; b.stoppedAt = { x: b.x, y: b.y }; break; }
+          if (dd < (f.diveUntil > now ? 3.6 : 1.8)) {
+            b.stopped = true;
+            b.stoppedAt = { x: b.x, y: b.y };
+            b.heldBy = f.ownerId || 'ai';
+            b.heldByName = f.name;
+            break;
+          }
         }
       }
       // boundary
-      const r = Math.hypot(b.x, b.y);
-      if (r > BOUNDARY) {
+      if (Math.hypot(b.x, b.y) > BOUNDARY) {
         return this.finishBall({ kind: b.airborne ? 'six' : 'four', runs: b.airborne ? 6 : 4 });
       }
       if (b.edge && p >= 1 && !b.edgeDone) {
@@ -371,13 +392,12 @@
         return this.finishBall({ kind: 'dot', runs: 0, text: 'Edged, no run' });
       }
       if ((b.stopped || p >= 1) && !b.edge) {
-        if (!b.stopped) { b.stopped = true; b.stoppedAt = { x: b.x, y: b.y }; }
-        if (!b.settleAt) {
-          b.settleAt = now + 600;
-          this.broadcast();
-        } else if (now >= b.settleAt) {
-          return this.rollOut(b.stoppedAt || { x: b.x, y: b.y });
-        }
+        if (!b.stopped) { b.stopped = true; b.stoppedAt = { x: b.x, y: b.y }; b.heldBy = 'ai'; }
+        // a human fielder gets a window to throw the stumps down
+        const humanHold = b.heldBy && b.heldBy !== 'ai';
+        const settleFor = humanHold ? 1500 : 600;
+        if (!b.settleAt) { b.settleAt = now + settleFor; this.broadcast(); }
+        else if (now >= b.settleAt) return this.rollOut(b.stoppedAt || { x: b.x, y: b.y });
       }
       this.broadcast();
       this.later(50, () => this.tickBall());
@@ -410,12 +430,36 @@
       f.y = clamp(f.y + mv.y, -60, 80);
     }
 
-    fielderAction(playerId, action) {
+    fielderAction(playerId, action, target) {
       const f = this.fielders.find((x) => x.ownerId === playerId);
       if (!f) return;
-      if (action === 'catch') { f.catchPressed = true; this.later(700, () => { f.catchPressed = false; }); }
-      if (action === 'dive') { f.diveUntil = Date.now() + 700; f.catchReach = 3.6; this.later(750, () => { f.catchReach = 2.6; }); }
+      if (action === 'catch') {
+        f.catchPressed = true;
+        this.later(700, () => { f.catchPressed = false; });
+      }
+      if (action === 'dive') {
+        f.diveUntil = Date.now() + 700;
+        f.catchReach = 3.6;
+        this.later(750, () => { f.catchReach = 2.6; });
+      }
+      if (action === 'throw') this.throwAtStumps(playerId, target || 'striker');
       this.broadcast();
+    }
+
+    throwAtStumps(playerId, target) {
+      if (this.phase !== 'inplay' || !this.ball || !this.ball.stopped) return;
+      if (this.ball.heldBy !== playerId) return;
+      const stumps = STUMPS[target] || STUMPS.striker;
+      const pos = this.ball.stoppedAt || { x: this.ball.x, y: this.ball.y };
+      const dist = Math.hypot(pos.x - stumps.x, pos.y - stumps.y);
+      const runs = this.ball.extraRuns || 0;
+      let chance = clamp(0.62 - dist / 90, 0.06, 0.55);
+      if (runs >= 2) chance += 0.12;
+      this.emit('throw', { by: playerId, target: target, hit: Math.random() < chance });
+      if (Math.random() < chance) {
+        return this.finishBall({ kind: 'runout', runs: runs, text: 'RUN OUT! Direct hit at the ' + (target === 'striker' ? "striker's" : "non-striker's") + ' end' });
+      }
+      this.ball.settleAt = Date.now() + 200;
     }
 
     // ---------- outcome ----------
@@ -426,26 +470,44 @@
       const bt = this.bat();
       const s = this.striker();
       const b = this.bowler();
-      let runs = res.runs || 0;
-      let wicket = ['bowled', 'caught', 'runout', 'stumped', 'lbw'].includes(res.kind);
 
-      if (res.kind === 'wide') {
-        bt.score.r += 1;
-        bt.score.extras += 1;
+      // no-ball: one extra, free hit next ball, the delivery is re-bowled
+      if (res.kind === 'noball') {
+        bt.score.r += 1; bt.score.extras += 1;
         if (b) b.bRuns += 1;
-        this.lastResult = { kind: 'wide', runs: 1, text: 'Wide — one extra, ball to be bowled again', wicket: false };
+        this.freeHit = true;
+        this.lastResult = { kind: 'noball', runs: 1, text: 'No ball! Free hit coming up', wicket: false, freeHit: true };
+        this.emit('result', this.lastResult);
+        this.broadcast();
+        this.later(1300, () => { if (this.phase !== 'done') { this.phase = 'ready'; this.deliverySetup(); } });
+        return;
+      }
+      // wide: one extra, re-bowled
+      if (res.kind === 'wide') {
+        bt.score.r += 1; bt.score.extras += 1;
+        if (b) b.bRuns += 1;
+        this.lastResult = { kind: 'wide', runs: 1, text: 'Wide — one extra, ball to be bowled again', wicket: false, freeHit: this.freeHit };
         this.emit('result', this.lastResult);
         this.broadcast();
         this.later(1200, () => { if (this.phase !== 'done') { this.phase = 'ready'; this.deliverySetup(); } });
         return;
       }
 
-      // legal delivery bookkeeping
+      let runs = res.runs || 0;
+      let wicket = ['bowled', 'caught', 'runout', 'stumped', 'lbw'].includes(res.kind);
+
+      // a free hit can only cost you a run out
+      if (this.freeHit && wicket && res.kind !== 'runout') {
+        wicket = false;
+        runs = 0;
+        res = { kind: 'dot', runs: 0, text: 'Free hit — no wicket can fall' };
+      }
+      this.freeHit = false;
+
       bt.score.balls += 1;
       this.balls += 1;
       s.b += 1;
       if (b) { b.bBalls += 1; b.bRuns += runs; }
-
       if (runs === 4) s.fours += 1;
       if (runs === 6) s.sixes += 1;
       s.r += runs;
@@ -454,18 +516,20 @@
       if (wicket) {
         bt.score.w += 1;
         s.out = true;
-        s.how = res.kind === 'caught' ? 'c ' + (res.fielder || 'fielder') : res.kind === 'runout' ? 'run out' : res.kind;
+        s.how = res.kind === 'caught' ? 'c ' + (res.fielder || 'fielder')
+          : res.kind === 'runout' ? 'run out'
+          : res.kind === 'lbw' ? 'lbw b ' + (b ? b.name : '') : 'b ' + (b ? b.name : '');
         if (b && res.kind !== 'runout') b.bWkts += 1;
       }
 
       this.thisOver.push(res.kind === 'dot' ? '•' : wicket ? 'W' : String(runs));
       this.lastResult = {
-        kind: res.kind, runs, text: this.resultText(res, s), wicket,
-        batter: s.name, bowler: b ? b.name : ''
+        kind: res.kind, runs, text: res.text || this.resultText(res, s), wicket,
+        batter: s.name, bowler: b ? b.name : '', freeHit: false
       };
       this.emit('result', this.lastResult);
+      if (wicket || runs === 4 || runs === 6) this.emit('replay', { text: this.lastResult.text, kind: res.kind });
       this.broadcast();
-
       this.later(1200, () => this.afterBall(res));
     }
 
@@ -475,6 +539,7 @@
         case 'four': return 'FOUR! Beautifully placed by ' + s.name;
         case 'caught': return 'CAUGHT by ' + (res.fielder || 'the fielder') + '! ' + s.name + ' has to go';
         case 'bowled': return 'BOWLED! ' + s.name + ' is cleaned up';
+        case 'lbw': return 'LBW! ' + s.name + ' is trapped in front';
         case 'runout': return 'RUN OUT! Sharp work in the field';
         case 'dot': return res.text || 'No run';
         default: { const r = res.runs || 0; return r === 0 ? 'No run' : r + (r === 1 ? ' run' : ' runs'); }
@@ -483,7 +548,6 @@
 
     afterBall(res) {
       const bt = this.bat();
-      const oversDone = Math.floor(this.balls / 6);
       const wicketsLeft = bt.players.length - bt.score.w;
       const targetReached = this.target != null && bt.score.r >= this.target;
 
@@ -493,19 +557,15 @@
         return this.endMatch();
       }
 
-      // strike rotation on odd runs
       const runs = res.runs || 0;
       if (runs % 2 === 1) this.swapStrike();
 
-      // new batter if wicket
       if (['bowled', 'caught', 'runout', 'stumped', 'lbw'].includes(res.kind)) {
-        const outWasStriker = true;
         const nextIdx = this.nextAvailableBatter();
         if (nextIdx === -1) return this.endMatch();
-        if (outWasStriker) this.strikerIdx = nextIdx; else this.nonStrikerIdx = nextIdx;
+        this.strikerIdx = nextIdx;
       }
 
-      // over complete
       if (this.balls % 6 === 0) {
         this.swapStrike();
         this.thisOver = [];
@@ -561,12 +621,22 @@
         if (this.teams[chasing].score.r >= this.target) winner = chasing;
         else if (this.teams[chasing].score.r === this.target - 1) winner = null;
         else winner = 1 - chasing;
-      } else {
-        if (t0.r > t1.r) winner = 0; else if (t1.r > t0.r) winner = 1;
-      }
-      if (winner == null) text = 'Match tied';
-      else text = this.teams[winner].name + ' win';
-      this.result = { winner, text, teams: this.teams.map((t) => ({ name: t.name, r: t.score.r, w: t.score.w, balls: t.score.balls })) };
+      } else if (t0.r > t1.r) winner = 0;
+      else if (t1.r > t0.r) winner = 1;
+      text = winner == null ? 'Match tied' : this.teams[winner].name + ' win';
+
+      // player of the match: runs + 20 per wicket
+      let best = null, bestVal = -1;
+      this.teams.forEach((t) => t.players.forEach((p) => {
+        const v = p.r + p.bWkts * 20;
+        if (v > bestVal) { bestVal = v; best = p; }
+      }));
+      this.mom = best ? { name: best.name, r: best.r, w: best.bWkts } : null;
+
+      this.result = {
+        winner, text, mom: this.mom,
+        teams: this.teams.map((t) => ({ name: t.name, r: t.score.r, w: t.score.w, balls: t.score.balls }))
+      };
       this.emit('matchEnd', this.result);
       this.broadcast();
     }
@@ -576,12 +646,12 @@
       return {
         phase: this.phase, format: this.format, overs: this.overs, code: this.code,
         innings: this.innings, balls: this.balls, target: this.target,
-        batTeam: this.batTeam,
+        batTeam: this.batTeam, freeHit: this.freeHit,
         teams: this.teams.map((t) => ({
           name: t.name,
           score: t.score,
           players: t.players.map((p) => ({
-            id: p.id, name: p.name, bot: p.bot, r: p.r, b: p.b, fours: p.fours,
+            id: p.id, name: p.name, bot: p.bot, kit: p.kit, r: p.r, b: p.b, fours: p.fours,
             sixes: p.sixes, out: p.out, how: p.how, bBalls: p.bBalls, bRuns: p.bRuns, bWkts: p.bWkts
           }))
         })),
@@ -592,17 +662,16 @@
         bowlerName: this.bowler() ? this.bowler().name : '',
         thisOver: this.thisOver.slice(),
         lastResult: this.lastResult, msg: this.msg, result: this.result,
-        tossWinner: this.tossWinner, captainId: this.captainId,
-        fielders: this.fielders.map((f) => ({ key: f.key, name: f.name, x: f.x, y: f.y, ownerId: f.ownerId, bot: f.bot, keeper: f.keeper })),
+        tossWinner: this.tossWinner, captainId: this.captainId, mom: this.mom,
+        fielders: this.fielders.map((f) => ({
+          key: f.key, name: f.name, x: f.x, y: f.y, ownerId: f.ownerId, bot: f.bot, keeper: f.keeper, kit: f.kit
+        })),
         ball: this.ball, delivery: this.pendingDelivery,
         batOrder: this.teams[this.batTeam].players.map((p) => ({ name: p.name, out: p.out, r: p.r, b: p.b }))
       };
     }
 
-    broadcast() {
-      if (this.phase === 'done') { this.emit('state', this.snapshot()); return; }
-      this.emit('state', this.snapshot());
-    }
+    broadcast() { this.emit('state', this.snapshot()); }
   }
 
   global.Engine = { MatchRunner, SHOTS, FIELD_SPOTS, BOUNDARY, BATSMAN_POS };

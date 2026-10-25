@@ -1,58 +1,75 @@
 # Crsek-09
 
-Real-time multiplayer cricket in the browser, built around one idea: in Duo and Squad
-modes nobody controls eleven cricketers. Everyone controls the one player whose turn it is.
+Real-time multiplayer cricket, built around one idea: in Duo and Squad modes nobody controls
+eleven cricketers. Everyone controls the one player whose turn it is.
 
-Built for phones first (portrait or landscape, touch controls), runs on desktop too.
+This repository is the **playable web prototype** — a 3D stadium rendered with Three.js, a real
+authoritative match engine, and genuine peer-to-peer multiplayer. It is the concept build that
+the production Unity game will be measured against.
 
 ## Play
 
 Open the published URL on two devices, or open it twice on one machine.
 
-- **Practice vs AI** — a full 2-over match against bots, no network needed.
+- **Practice vs AI** — a full match against bots, no network needed.
 - **Create Room** — you host. Share the 4-letter code or the invite link (`?room=CODE`).
 - **Join Room** — enter a friend's code.
 - **Quick Match** — joins the first open public game, or hosts one and waits for a real player.
 
-Pick Solo (1 v 1), Duo (2 v 2) or Squad (4 v 4), and 2, 5 or 10 overs. Empty slots fill
-with bots, so a match always starts. Humans always bat before bots.
+Pick Solo (1 v 1), Duo (2 v 2) or Squad (4 v 4), and 2, 5 or 10 overs. Empty slots fill with
+bots so a match always starts. Humans always bat before bots.
 
-## The squad mechanics
+## Controls
 
-**Batting.** Teammates bat in order, one at a time. Only the player on strike has a bat:
-drag the joystick to aim, tap Drive / Loft / Pull / Sweep / Defend to swing. Timing decides
-everything — swing as the ball arrives, not before. The non-striker is a real second player
-who can call the extra run. When the striker is out, the next teammate in the order walks in.
+| Role | Controls |
+|---|---|
+| Batting (striker only) | Joystick aims, Drive / Loft / Pull / Sweep / Defend swings. Timing beats power. |
+| Non-striker | **CALL THE RUN** to steal an extra run while the ball is live. |
+| Bowling | Joystick sets line, buttons set length and type, **RELEASE** stops the meter in the green. |
+| Fielding | Joystick moves your fielder, **CATCH** when the ball is near, **DIVE** to extend reach. |
+| Throwing | When you pick the ball up, **THROW · STRIKER'S END** / **NON-STRIKER'S END** goes for the run-out. |
 
-**Bowling.** One bowler per over, rotating across the human bowlers. Pick line with the
-joystick, pick length and type, then stop the release meter in the green. A loose release
-produces wides and half-trackers the batter can put away.
+Top-right buttons: scorecard, quick chat, camera (broadcast / batter / top-down), and 3D ↔ 2D.
 
-**Fielding.** Every other player is given one fielder: move with the joystick, CATCH when the
-ball comes near, DIVE to extend reach. The keeper is always AI so nobody is stuck behind
-the stumps.
+## What is implemented
+
+**Match engine** — toss and bat/bowl choice; configurable overs; legal balls, wides and no-balls;
+free hits; boundaries 4 and 6; runs by running with a called extra run and run-out risk; bowled,
+caught, LBW, run out, stumped; strike rotation on odd runs and at over end; batting order with
+next-man-in; innings break and target; chase, tie and win; per-batter and per-bowler scorecard;
+player of the match.
+
+**3D presentation** — oval ground with mowing stripes and boundary rope, 30-yard circle, pitch
+with creases, stumps and bails, tiered stands with a crowd, floodlights, low-poly players with
+procedural run, bowl and bat-swing animation, ball flight with height, shadow and landing marker.
+The classic 2D top-down view is still one tap away.
+
+**Multiplayer** — host-authoritative peer-to-peer over WebRTC. Private rooms with codes and invite
+links, public matchmaking slots, reconnection (a dropped player's seat is covered by a bot and
+handed straight back when they rejoin), quick chat, kit colours per player, local career stats.
 
 ## Architecture
 
 ```
 index.html          screens: name, home, room, queue, match, result
 css/style.css       mobile-first broadcast-style UI
-js/engine.js        authoritative cricket engine — rules, ball physics, bots (host only)
-js/net.js           PeerJS wrapper: room host/guest, public matchmaking slots
-js/view.js          canvas renderer (top-down field, ball arc, fielder markers)
-js/main.js          lobby, role-aware controls, intent routing, HUD
+js/engine.js        authoritative engine — rules, ball physics, bots (host only)
+js/net.js           PeerJS wrapper: room host/guest, public slots, reconnection
+js/view3d.js        Three.js stadium, players and animation
+js/view.js          classic 2D canvas renderer (fallback / 2D mode)
+js/main.js          lobby, role-aware controls, intent routing, HUD, stats
 ```
 
-**The host device is the server.** It owns all match state and runs the rules engine and the
-ball simulation. Guests send intents only — `{delivery}`, `{shot}`, `{move}`, `{action}`,
-`{run}` — and the engine validates each one against the current phase and the sender's role,
-so a non-striker cannot score a shot and a fielder cannot bowl. The host broadcasts state
-snapshots at ~20 Hz plus discrete events (delivery, shot, result, innings break, match end).
+**The host device is the server.** It owns all match state and runs the rules engine and the ball
+simulation. Guests send intents only — `delivery`, `shot`, `move`, `action`, `run` — and the
+engine validates each one against the current phase and the sender's role, so a non-striker cannot
+score a shot, a fielder cannot bowl, and only the player holding the ball can throw at the stumps.
+The host broadcasts state snapshots at ~20 Hz plus discrete events (delivery, shot, throw, result,
+innings break, match end).
 
-**No game server required.** PeerJS (WebRTC) carries the traffic peer-to-peer. A 4-letter
-room code maps to a deterministic peer id, so joining needs no backend. Public matchmaking
-uses 8 advertised slots: a host claims the first free slot id, a joiner scans all 8 at once
-and takes the first that opens.
+**No game server required.** PeerJS (WebRTC) carries the traffic peer-to-peer; a 4-letter room code
+maps to a deterministic peer id. Public matchmaking uses 8 advertised slots: a host claims the
+first free slot id, a joiner scans all 8 at once and takes the first that opens.
 
 To run against your own signalling server, set this before the app scripts load:
 
@@ -69,24 +86,51 @@ cd crsek-09 && python3 -m http.server 8080
 # open http://localhost:8080
 ```
 
-## Rules implemented
+## Testing
 
-Toss and bat/bowl choice; configurable overs; legal balls plus wides; boundaries 4 and 6;
-runs by running (with a called extra run and run-out risk); bowled, caught, run out, stumped;
-strike rotation on odd runs and at over end; batting order and next-man-in; innings break and
-target; chase, tie, win; full scorecard with per-batter and per-bowler figures.
+The build is checked three ways before each deploy:
+
+- `test/rules.js` — drives the engine headlessly in Node: no-ball awards one extra and a free
+  hit without counting the ball, a free hit blocks a wicket, a wide costs one and is re-bowled,
+  odd runs rotate strike, a wicket brings the next batter in and credits the bowler, innings
+  break sets the target, match end picks a player of the match.
+- `test/throwtest.js` — a throw from the player holding the ball can produce a run-out; a throw
+  from anyone else is ignored.
+- `test/test8.js` — two real browser peers: room join, identical state on both screens, forced
+  disconnect (seat covered by a bot), reconnect (seat handed back), no console errors.
+
+`test/fakepeer.js` substitutes a BroadcastChannel signalling shim so the real netcode can be
+driven across tabs where WebRTC is unavailable (as in CI sandboxes).
 
 ## Not in this build
 
-- Voice chat (quick-chat presets only)
-- Bots do not take over a disconnected player's slot mid-match
-- No LBW/DRS heuristics, no free-hit after a no-ball
-- No cosmetics, progression or accounts
+- Voice chat is wired in `net.js` (mesh audio over the same peer connection) but has no UI yet.
+- No dedicated relay server: if a network blocks WebRTC, room joins fail with a visible error.
+- No accounts — career stats and kit live in local storage.
+- Bots do not bat for a human who is present but idle.
 
-## Next stages
+## Production path: Unity
 
-1. A small Node + Socket.IO relay so matchmaking and reconnection do not depend on WebRTC.
-2. Reconnect: bind a player id to a seat and hand the seat back on rejoin.
-3. Richer fielding: throw target selection and direct run-out control.
-4. 3D presentation, animation and crowd audio.
-5. Native wrapper (Capacitor) for Android/iOS stores.
+The web prototype is the concept and the rules reference. The shipping game should be Unity + C#,
+because the target is Android/iOS and the requirements — real-time physics, animation blending,
+stadium art, mobile input, native store distribution — are what Unity is built for. The web
+build stays online as a playable demo and design tool.
+
+Recommended Unity stack: Unity 2022 LTS (URP) · Netcode for GameObjects with a dedicated
+authoritative server (Linux build on a small VPS) or Unity Relay for matchmaking · Unity Input
+System with on-screen virtual joysticks for touch · Addressables for stadium/kit assets ·
+Cinemachine for the broadcast camera.
+
+Port order, each stage playable before the next:
+
+1. **Rules core in C#** — port `engine.js` to plain C# classes (`MatchState`, `BallResolver`,
+   `Innings`) with no Unity dependency, plus the same Node rule tests rewritten as NUnit.
+2. **One-pitch prototype** — batter, bowler, keeper and fielders as capsules, ball with Rigidbody
+   physics, scoreboard HUD. Single player, one over.
+3. **Roles and controls** — bat timing, bowling meter, fielding joystick, throw targets.
+4. **Networked Duo/Squad** — server-authoritative match runner mirroring the intent/state protocol
+   already used here: clients send intents, the server validates role and phase, state snapshots go
+   out at 20 Hz.
+5. **Rooms, matchmaking, reconnection** — lobby UI, room codes, backfill with bots.
+6. **Presentation** — stadium art, animation rigs, crowd and audio, camera cuts and replays.
+7. **Mobile hardening** — input latency, thermal budget, battery, store builds.
