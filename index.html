@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<meta name="theme-color" content="#06120c" />
+<meta name="description" content="Crsek-09 — squad cricket. Duo and Squad cricket where teammates share the bat, the ball and the field." />
+<title>Crsek-09 — Squad Cricket</title>
+<link rel="stylesheet" href="css/style.css" />
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%23114a28'/><circle cx='32' cy='32' r='13' fill='%23e63946'/><path d='M20 32h24' stroke='%23fff' stroke-width='3'/></svg>" />
+</head>
+<body>
+<div id="app">
+
+  <!-- 1. NAME -->
+  <section class="screen active" id="screen-name">
+    <div class="brand">
+      <div class="logo">C<span>09</span></div>
+      <h1>Crsek-09</h1>
+      <p class="tag">Squad cricket. Share the bat, the ball and the field.</p>
+    </div>
+    <div class="card">
+      <label class="lbl" for="nameInput">Your player name</label>
+      <input id="nameInput" maxlength="14" placeholder="e.g. Selva" autocomplete="off" />
+      <button class="btn primary wide" id="nameGo">Enter the ground</button>
+      <p class="fine">No sign-up. Your name stays on this device.</p>
+    </div>
+  </section>
+
+  <!-- 2. HOME -->
+  <section class="screen" id="screen-home">
+    <header class="topbar">
+      <div class="mini-logo">C<span>09</span></div>
+      <div class="who" id="whoami">—</div>
+      <button class="icon-btn" id="helpBtn" aria-label="Help">?</button>
+    </header>
+    <div class="card">
+      <div class="row-label">Squad size</div>
+      <div class="seg" id="formatSeg">
+        <button data-f="1" class="on">Solo<small>1 v 1</small></button>
+        <button data-f="2">Duo<small>2 v 2</small></button>
+        <button data-f="4">Squad<small>4 v 4</small></button>
+      </div>
+      <div class="row-label">Overs</div>
+      <div class="seg" id="oversSeg">
+        <button data-o="2">2</button>
+        <button data-o="5" class="on">5</button>
+        <button data-o="10">10</button>
+      </div>
+      <button class="btn primary wide" id="quickBtn">Quick Match <small id="qHint">join or host a public game</small></button>
+      <div class="split">
+        <button class="btn" id="createBtn">Create Room</button>
+        <button class="btn" id="joinBtn">Join Room</button>
+      </div>
+      <button class="btn ghost wide" id="practiceBtn">Practice vs AI <small>solo, offline</small></button>
+    </div>
+    <p class="fine center">Everyone on the field is a real player on their own phone.</p>
+  </section>
+
+  <!-- 3. ROOM -->
+  <section class="screen" id="screen-room">
+    <header class="topbar">
+      <button class="icon-btn" id="roomBack">‹</button>
+      <div class="who">Room</div>
+      <div style="width:38px"></div>
+    </header>
+    <div class="card">
+      <div class="code-box">
+        <div class="code-label">Room code</div>
+        <div class="code" id="roomCode">----</div>
+        <button class="btn small" id="copyBtn">Copy invite link</button>
+      </div>
+      <div class="row-label">Squads <span id="roomMeta"></span></div>
+      <div class="roster" id="roster"></div>
+      <button class="btn primary wide" id="startBtn">Start match</button>
+      <p class="fine center" id="roomHint">Empty slots are filled with bots when you start.</p>
+    </div>
+  </section>
+
+  <!-- 4. QUEUE -->
+  <section class="screen" id="screen-queue">
+    <div class="card center-card">
+      <div class="spinner"></div>
+      <h2 id="queueTitle">Finding a match…</h2>
+      <p class="fine" id="queueSub">Looking for open public games.</p>
+      <button class="btn wide" id="queueCancel">Cancel</button>
+    </div>
+  </section>
+
+  <!-- 5. MATCH -->
+  <section class="screen match" id="screen-match">
+    <canvas id="pitch"></canvas>
+
+    <div class="hud" id="hud">
+      <div class="hud-top">
+        <div class="score" id="scoreLine">0/0</div>
+        <div class="ov" id="overLine">0.0 / 5</div>
+        <div class="req" id="reqLine"></div>
+      </div>
+      <div class="over-dots" id="overDots"></div>
+      <div class="players-line">
+        <span id="batterLine">—</span>
+        <span class="dot">•</span>
+        <span id="bowlerLine">—</span>
+      </div>
+    </div>
+
+    <div class="role-banner" id="roleBanner">Waiting…</div>
+    <div class="toast" id="toast"></div>
+    <div class="result-flash" id="flash"></div>
+
+    <div class="controls" id="controls">
+      <div class="pad" id="pad"><div class="nub" id="nub"></div></div>
+      <div class="btns" id="buttons"></div>
+    </div>
+
+    <div class="match-actions">
+      <button class="icon-btn" id="scorecardBtn">☰</button>
+      <button class="icon-btn" id="chatBtn">💬</button>
+    </div>
+
+    <div class="toss-overlay hidden" id="tossOverlay">
+      <div class="card center-card">
+        <h2 id="tossTitle">Coin toss</h2>
+        <p class="fine" id="tossSub"></p>
+        <div class="split" id="tossBtns">
+          <button class="btn primary" id="tossBat">Bat first</button>
+          <button class="btn" id="tossBowl">Bowl first</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. RESULT -->
+  <section class="screen" id="screen-result">
+    <div class="card center-card">
+      <h1 id="resultTitle">Match over</h1>
+      <div class="result-grid" id="resultGrid"></div>
+      <button class="btn primary wide" id="againBtn">Play again</button>
+      <button class="btn ghost wide" id="homeBtn">Back to home</button>
+    </div>
+  </section>
+
+  <!-- sheets -->
+  <div class="sheet hidden" id="scorecard"><div class="sheet-inner" id="scorecardInner"></div></div>
+  <div class="sheet hidden" id="chatSheet">
+    <div class="sheet-inner">
+      <h3>Quick chat</h3>
+      <div class="chat-grid" id="chatGrid"></div>
+    </div>
+  </div>
+  <div class="sheet hidden" id="help">
+    <div class="sheet-inner">
+      <h3>How Crsek-09 works</h3>
+      <p><b>Everyone is a player.</b> In Duo and Squad you never control eleven cricketers. You control one: the one whose turn it is.</p>
+      <ul>
+        <li><b>Batting:</b> only the striker on strike bats. Drag the stick to aim, tap a shot. Timing beats power — hit as the ball arrives.</li>
+        <li><b>Non-striker:</b> call the extra run with RUN while the ball is live.</li>
+        <li><b>Bowling:</b> one bowler per over. Pick line with the stick, pick length and type, then stop the release meter in the green.</li>
+        <li><b>Fielding:</b> you are given one fielder. Move with the stick, tap CATCH when the ball comes to you, DIVE to extend your reach.</li>
+        <li><b>Keeper</b> is always AI so nobody is stuck behind the stumps.</li>
+      </ul>
+      <button class="btn wide" id="helpClose">Got it</button>
+    </div>
+  </div>
+
+  <div class="net-banner hidden" id="netBanner"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>if(!window.Peer){document.write('<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"><\/script>');}</script>
+<script src="js/engine.js"></script>
+<script src="js/net.js"></script>
+<script src="js/view.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
