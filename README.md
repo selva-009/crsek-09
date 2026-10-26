@@ -23,10 +23,10 @@ bots so a match always starts. Humans always bat before bots.
 
 | Role | Controls |
 |---|---|
-| Batting (striker only) | Joystick aims, then Drive / Loft / Pull / Cut / Sweep / Defend. Each shot has its own side and trajectory; timing beats power. |
+| Batting (striker only) | Stick aims and sets footwork — push up for front foot, down for back foot. Then Drive / Loft / Pull / Cut / Sweep / Defend. Each shot has its own side and trajectory; timing beats power, and the wrong foot on a length costs accuracy. |
 | Non-striker | **CALL THE RUN** to steal an extra run while the ball is live. |
-| Bowling | Joystick sets line, buttons set length and type, **RELEASE** stops the meter in the green. |
-| Fielding | Joystick moves your fielder, **CATCH** when the ball is near, **DIVE** to extend reach. |
+| Bowling | Stick sets line (left/right) and length (up = yorker, down = short) with a dashed preview line on the pitch. Type and speed buttons, **RELEASE** stops the meter in the green. |
+| Fielding | Stick moves your fielder, magnitude is sprint. One contextual button changes with the situation (CATCH / DIVE / PICK UP / THROW / SPRINT), plus a fixed DIVE. |
 | Throwing | When you pick the ball up, **THROW · STRIKER'S END** / **NON-STRIKER'S END** goes for the run-out. |
 
 Top-right buttons: scorecard, quick chat, camera (broadcast / batter / top-down), and 3D ↔ 2D.
@@ -60,6 +60,22 @@ resolution first and shadows second. Rendering pauses while the tab is hidden.
 **Multiplayer** — host-authoritative peer-to-peer over WebRTC. Private rooms with codes and invite
 links, public matchmaking slots, reconnection (a dropped player's seat is covered by a bot and
 handed straight back when they rejoin), quick chat, kit colours per player, local career stats.
+
+## Touch input
+
+`js/input.js` is a small input layer rather than a decorative circle:
+
+- **Pointer capture** — the finger that grabs the stick keeps it even if it slides off the pad, so a fast swipe never drops your aim.
+- **Deadzone** at 15% so a resting thumb does not send input, with a normalised vector out.
+- **Snap-back** on release, with the nub and a direction arrow following the thumb.
+- **One finger per stick** — a second finger tapping a shot button cannot steal or reset the stick, which is verified in `test/btntest3.js` by holding the stick and tapping a shot with a second finger.
+- **No page scroll or zoom** — `touch-action: none` on the pad, `preventDefault` on pointer events, and a document-level guard against pinch and double-tap zoom.
+
+The same stick is re-purposed per role: aim and footwork when batting, line and length when bowling, movement when fielding.
+
+## Characters
+
+Players are procedural jointed rigs built in `view3d.js` — hips, torso, shoulders, elbows, hips, knees and feet, with a helmet, grille, peak, pads, gloves, shoes and a two-part bat. Poses blend toward targets each frame (stance, swing, run, bowl, dive, catch, throw, celebrate) rather than snapping between states. They are stylised, not photoreal: see the external assets note below for what that would take.
 
 ## Architecture
 
@@ -120,6 +136,20 @@ The build is checked three ways before each deploy:
 
 `test/fakepeer.js` substitutes a BroadcastChannel signalling shim so the real netcode can be
 driven across tabs where WebRTC is unavailable (as in CI sandboxes).
+
+## External assets — what would actually make the players realistic
+
+The current characters are hand-built geometry. Three.js can render realistic humans fine — it supports skinned glTF meshes with bone rigs — but realistic humans have to be *authored*, and procedural boxes and cylinders cannot become anatomically correct characters with facial rigs and mocap-quality animation. That needs external assets, so per your instruction, here is the request before anything is integrated:
+
+| Option | Source | Cost / licence | Requirements | Why it would help |
+|---|---|---|---|---|
+| **Mixamo** (Adobe) | mixamo.com | Free, needs a free Adobe account. Adobe's terms permit use of characters and animations in commercial projects; confirm the current terms on their site before shipping. | Adobe account; downloads as FBX, converted to glTF for the web | Rigged humans plus a large mocap library (batting, bowling, running, diving, catching, throwing, celebrating) that matches the animation list you asked for |
+| **Ready Player Me** | readyplayer.me | Free tier for avatars; commercial use depends on plan — check their pricing page | Account and API key for automated creation | Realistic, customisable avatars (faces, hair, kit) exported as glTF |
+| **Kenney / Quaternius character packs** | kenney.nl, quaternius.com | CC0 — free for commercial use, no account | None | Stylised low-poly rigged characters with animation sets, safe for mobile budgets |
+
+My recommendation: **Mixamo for the animation set** and either Mixamo characters or a CC0 pack for the meshes, converted to glTF. It gives the animation coverage you listed (front-foot and back-foot shots, run-ups, releases, dives, throws, celebrations) without hand-animating anything. The cost is weight: 17 skinned characters at once is heavy on Android, so it would need LOD levels, fewer on-screen fielders or instancing, and the asset bundle would grow from ~0 KB to a few MB.
+
+I have not integrated any of these — no account exists, no key is configured, and nothing here should assume one is. Say which option you want and I'll wire the loader and the LOD budget.
 
 ## Not in this build
 

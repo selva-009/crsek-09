@@ -12,7 +12,7 @@
     name: '', pid: '', isHost: false, net: null, runner: null,
     state: null, lobby: [], format: 2, overs: 5, mode: null,
     code: '', role: null, ctrlSig: '', stick: { x: 0, y: 0, on: false },
-    selLength: 'good', selType: 'pace', meterStart: 0, flightStart: 0,
+    selLength: 'good', selType: 'pace', selSpeed: 'normal', meterStart: 0, flightStart: 0,
     lastMoveSent: 0, view: null, view3d: null, use3d: true, camera: 'broadcast',
     kit: '#7fd1ae', stats: { m: 0, r: 0, w: 0, win: 0, best: 0 },
     lastFrame: 0, socketReady: false
@@ -431,6 +431,7 @@
   }
 
   function applyIntent(playerPid, a, p) {
+    if (window.__crsekCount && window.__crsekCount[a] != null) window.__crsekCount[a]++;
     if (!app.runner) return;
     switch (a) {
       case 'delivery': app.runner.setDelivery(playerPid, { line: p.line, length: p.length, type: p.type, release: p.release }); break;
@@ -628,6 +629,7 @@
       btns.innerHTML = SHOT_BTNS.map(([k, l, s]) =>
         '<button class="gbtn" data-shot="' + k + '">' + l + '<small>' + s + '</small></button>').join('') +
         '<button class="gbtn" data-act="run">RUN<small>+1 risky</small></button>';
+      $('padLabel').textContent = 'Aim · step';
     } else if (role === 'nonstriker') {
       pad.classList.add('hidden');
       btns.className = 'btns';
@@ -636,29 +638,43 @@
       pad.classList.remove('hidden');
       btns.className = 'btns';
       btns.innerHTML =
-        '<button class="gbtn" data-len="yorker">Yorker</button>' +
-        '<button class="gbtn" data-len="full">Full</button>' +
-        '<button class="gbtn" data-len="good">Good</button>' +
-        '<button class="gbtn" data-len="short">Short</button>' +
-        '<button class="gbtn" data-type="cycle">' + app.selType.toUpperCase() + '<small>tap to change</small></button>' +
-        '<button class="gbtn big hot" data-act="release">RELEASE<small>stop it in the green</small></button>';
-      markSel();
+        '<button class="gbtn" data-type="cycle">' + app.selType.toUpperCase() + '<small>delivery</small></button>' +
+        '<button class="gbtn" data-speed="cycle">' + app.selSpeed.toUpperCase() + '<small>speed</small></button>' +
+        '<button class="gbtn big hot" data-act="release">RELEASE<small>stick sets line &amp; length</small></button>';
+      $('padLabel').textContent = 'Line & length';
     } else if (role === 'field') {
       pad.classList.remove('hidden');
       btns.className = 'btns';
       btns.innerHTML =
-        '<button class="gbtn" data-act="catch">CATCH<small>when it is near</small></button>' +
+        '<button class="gbtn big" data-ctx="idle" data-act="ctx">ACTION<small>context</small></button>' +
         '<button class="gbtn" data-act="dive">DIVE<small>extend reach</small></button>';
+      $('padLabel').textContent = 'Move';
     } else if (role === 'captain') {
       pad.classList.add('hidden');
       btns.innerHTML = '';
       $('tossOverlay').classList.remove('hidden');
+      $('padLabel').textContent = '—';
     } else {
       pad.classList.add('hidden');
       btns.className = 'btns';
       btns.innerHTML = '<button class="gbtn" data-act="score">SCORECARD</button>' +
         '<button class="gbtn" data-act="chat">QUICK CHAT</button>';
+      $('padLabel').textContent = '—';
     }
+    updatePadLabel();
+  }
+
+  // What the one big fielding button should do right now.
+  function contextualAction(st) {
+    const me = (st.fielders || []).find((f) => f.ownerId === app.pid);
+    const b = st.ball;
+    if (!me || !b) return { kind: 'idle', label: 'SPRINT', hint: 'hold the stick' };
+    const d = Math.hypot(b.x - me.x, b.y - me.y);
+    if (b.stopped && b.heldBy === app.pid) return { kind: 'throw', label: 'THROW', hint: 'pick an end' };
+    if (b.z > 0.6 && d < 7) return { kind: 'catch', label: 'CATCH', hint: 'ball is in the air' };
+    if (!b.stopped && d < 9) return { kind: 'dive', label: 'DIVE', hint: 'cut it off' };
+    if (b.stopped && d < 3) return { kind: 'pickup', label: 'PICK UP', hint: 'collect the ball' };
+    return { kind: 'sprint', label: 'SPRINT', hint: 'get to the ball' };
   }
 
   function markSel() {
@@ -668,14 +684,30 @@
   $('tossBat').onclick = () => { sendIntent('bat', { bat: true }); $('tossOverlay').classList.add('hidden'); };
   $('tossBowl').onclick = () => { sendIntent('bat', { bat: false }); $('tossOverlay').classList.add('hidden'); };
 
-  $('buttons').addEventListener('click', (e) => {
-    const b = e.target.closest('button'); if (!b) return;
-    if (b.dataset.shot) { sendIntent('shot', { type: b.dataset.shot, dir: stickDir() }); blip(300, 0.05, 'square'); return; }
+  Input.bindButtons($('buttons'), (b) => {
+    if (b.dataset.shot) {
+      sendIntent('shot', { type: b.dataset.shot, dir: stickDir(), foot: stickFoot() });
+      blip(300, 0.05, 'square');
+      return;
+    }
     if (b.dataset.len) { app.selLength = b.dataset.len; markSel(); return; }
     if (b.dataset.type) {
       const types = ['pace', 'swing', 'spin', 'slower'];
       app.selType = types[(types.indexOf(app.selType) + 1) % types.length];
       b.childNodes[0].nodeValue = app.selType.toUpperCase();
+      return;
+    }
+    if (b.dataset.speed) {
+      const speeds = ['normal', 'fast', 'slow'];
+      app.selSpeed = speeds[(speeds.indexOf(app.selSpeed) + 1) % speeds.length];
+      b.childNodes[0].nodeValue = app.selSpeed.toUpperCase();
+      return;
+    }
+    if (b.dataset.ctx !== undefined) {
+      const ctx = contextualAction(app.state);
+      if (ctx.kind === 'catch') sendIntent('action', { kind: 'catch' });
+      else if (ctx.kind === 'dive') sendIntent('action', { kind: 'dive' });
+      else if (ctx.kind === 'throw' || ctx.kind === 'pickup') $('throwRow').classList.remove('hidden');
       return;
     }
     const act = b.dataset.act;
@@ -694,13 +726,18 @@
   });
 
   function stickDir() {
-    const s = app.stick;
-    if (!s.on || (Math.abs(s.x) < 0.12 && Math.abs(s.y) < 0.12)) return 0;
-    return clamp(Math.round((Math.atan2(s.x, -s.y) * 180) / Math.PI), -180, 180);
+    if (!app.pad || !app.pad.mag) return 0;
+    return app.pad.dir();
   }
 
   function doRelease() {
-    sendIntent('delivery', { line: clamp(app.stick.x, -1, 1), length: app.selLength, type: app.selType, release: meterValue() });
+    sendIntent('delivery', {
+      line: clamp(app.pad.x, -1, 1),
+      length: stickLength(),
+      type: app.selType,
+      release: meterValue()
+    });
+    if (app.view3d && app.view3d.clearPreview) app.view3d.clearPreview();
   }
 
   function meterValue() {
@@ -709,36 +746,49 @@
     return (Math.sin(t * 3.4) + 1) / 2;
   }
 
-  // ---------- joystick ----------
-  (function initPad() {
-    const pad = $('pad'), nub = $('nub');
-    let rect = null, active = false;
-    function start(e) { active = true; rect = pad.getBoundingClientRect(); move(e); }
-    function move(e) {
-      if (!active) return;
-      const t = e.touches ? e.touches[0] : e;
-      const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
-      let dx = t.clientX - cx, dy = t.clientY - cy;
-      const max = rect.width / 2 - 8;
-      const d = Math.hypot(dx, dy);
-      if (d > max) { dx = (dx / d) * max; dy = (dy / d) * max; }
-      nub.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
-      app.stick.x = dx / max; app.stick.y = dy / max; app.stick.on = true;
-      e.preventDefault();
+  // ---------- virtual stick ----------
+  Input.lockPage();
+  app.pad = new Input.Stick($('pad'), $('nub'), {
+    deadzone: 0.15,
+    arrow: $('padArrow'),
+    onChange: () => updatePadLabel()
+  });
+
+  function updatePadLabel() {
+    const role = app.role;
+    const st = app.state;
+    const mag = app.pad.mag;
+    if (role === 'bowl') {
+      const len = stickLength();
+      $('padLabel').textContent = mag
+        ? 'Line ' + (app.pad.x > 0.25 ? 'leg' : app.pad.x < -0.25 ? 'off' : 'middle') + ' · ' + len
+        : 'Line & length';
+    } else if (role === 'bat') {
+      const foot = stickFoot();
+      $('padLabel').textContent = mag
+        ? (foot === 'front' ? 'Front foot' : foot === 'back' ? 'Back foot' : 'Aim ' + app.pad.dir() + '°')
+        : 'Aim · step';
+    } else if (role === 'field') {
+      $('padLabel').textContent = mag ? (mag > 0.75 ? 'Sprint' : 'Move') : 'Move';
+    } else {
+      $('padLabel').textContent = '—';
     }
-    function end() {
-      active = false;
-      nub.style.transform = 'translate(0,0)';
-      app.stick.x = 0; app.stick.y = 0; app.stick.on = false;
-    }
-    pad.addEventListener('touchstart', start, { passive: false });
-    pad.addEventListener('touchmove', move, { passive: false });
-    pad.addEventListener('touchend', end);
-    pad.addEventListener('touchcancel', end);
-    pad.addEventListener('mousedown', (e) => { start(e); e.preventDefault(); });
-    window.addEventListener('mousemove', (e) => { if (active) move(e); });
-    window.addEventListener('mouseup', () => { if (active) end(); });
-  })();
+  }
+
+  function stickFoot() {
+    const y = app.pad.y;
+    if (y < -0.4) return 'front';
+    if (y > 0.4) return 'back';
+    return 'neutral';
+  }
+
+  function stickLength() {
+    const y = app.pad.y;
+    if (y < -0.6) return 'yorker';
+    if (y < -0.15) return 'full';
+    if (y > 0.45) return 'short';
+    return 'good';
+  }
 
   // ---------- meter ----------
   const meter = document.createElement('div');
@@ -784,11 +834,32 @@
     const holding = st.ball && st.ball.stopped && st.ball.heldBy === app.pid;
     $('throwRow').classList.toggle('hidden', !holding);
 
-    if (app.role === 'field' && app.stick.on && (st.phase === 'inplay' || st.phase === 'flight')) {
+    // fielding: stick drives the fielder, magnitude is sprint
+    if (app.role === 'field' && app.pad.mag && (st.phase === 'inplay' || st.phase === 'flight')) {
       const now = performance.now();
-      if (now - app.lastMoveSent > 70) {
+      if (now - app.lastMoveSent > 55) {
         app.lastMoveSent = now;
-        sendIntent('move', { x: app.stick.x * 0.55, y: app.stick.y * 0.55 });
+        const speed = 0.32 + 0.5 * app.pad.mag;
+        sendIntent('move', { x: app.pad.x * speed, y: app.pad.y * speed });
+      }
+    }
+
+    // bowling: live trajectory preview before release
+    if (app.view3d) {
+      if (app.role === 'bowl' && st.phase === 'delivery' && app.view3d.setPreview) {
+        app.view3d.setPreview({ line: clamp(app.pad.x, -1, 1), length: stickLength() });
+      } else if (app.view3d.clearPreview) {
+        app.view3d.clearPreview();
+      }
+    }
+
+    // fielding: keep the contextual action button honest
+    if (app.role === 'field') {
+      const ctx = contextualAction(st);
+      const btn = document.querySelector('[data-ctx]');
+      if (btn && btn.dataset.ctx !== ctx.kind) {
+        btn.dataset.ctx = ctx.kind;
+        btn.innerHTML = ctx.label + '<small>' + ctx.hint + '</small>';
       }
     }
   }
@@ -870,5 +941,6 @@
   app.hostStart = hostStart;
   app.startPractice = startMatchWithBots;
   app.reconnect = reconnect;
+  window.__crsekCount = { shot: 0, delivery: 0, move: 0, action: 0, run: 0, bat: 0 };
   window.__crsek = app;
 })();

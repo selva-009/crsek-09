@@ -244,10 +244,11 @@
       this.pendingDelivery = {
         line: clamp(d.line || 0, -1, 1), length: d.length || 'good',
         type: d.type || 'pace', release: rel, accuracy: clamp(acc, 0, 1),
-        wide: wide, noBall: overstep
+        speed: d.speed || 'normal', wide: wide, noBall: overstep
       };
       const pd = this.pendingDelivery;
-      const duration = (SPEEDS[pd.type] || 1.0) * (1.06 - 0.12 * pd.accuracy);
+      const speedMul = pd.speed === 'fast' ? 0.88 : pd.speed === 'slow' ? 1.16 : 1;
+      const duration = (SPEEDS[pd.type] || 1.0) * (1.06 - 0.12 * pd.accuracy) * speedMul;
       const pitchY = PITCH_Y[pd.length] != null ? PITCH_Y[pd.length] : 6.2;
       const swingDir = Math.random() < 0.5 ? -1 : 1;
       pd.traj = {
@@ -328,7 +329,15 @@
         dir: clamp(s.dir || 0, -180, 180),
         t: t
       };
-      shot.quality = clamp(1 - Math.abs(t - contactAt) / 0.2, 0, 1);
+      let q = clamp(1 - Math.abs(t - contactAt) / 0.2, 0, 1);
+      const len = this.pendingDelivery && this.pendingDelivery.length;
+      const foot = s.foot || 'neutral';
+      if (foot === 'front' && (len === 'full' || len === 'yorker')) q += 0.08;
+      else if (foot === 'front' && len === 'short') q -= 0.12;
+      else if (foot === 'back' && len === 'short') q += 0.08;
+      else if (foot === 'back' && (len === 'full' || len === 'yorker')) q -= 0.08;
+      shot.foot = foot;
+      shot.quality = clamp(q, 0, 1);
       this.pendingShot = shot;
       if (t > contactAt + 0.2) this.onArrival();
     }
@@ -349,8 +358,9 @@
       const contactAt = traj ? traj.contactAt : 0.6;
       const t = good ? contactAt + rand(-0.06, 0.06) : contactAt + rand(-0.22, 0.22);
       const dir = pick([0, 0, 12, -12, 35, -35, 65, -65, 100, -100, 140, -140]);
+      const foot = (d.length === 'short') ? 'back' : (d.length === 'full' || d.length === 'yorker') ? 'front' : 'neutral';
       this.later(Math.max(120, t * 1000 - 40), () => {
-        if (!this.pendingShot && this.phase === 'flight') this.setShot(s.id, { dir, type });
+        if (!this.pendingShot && this.phase === 'flight') this.setShot(s.id, { dir, type, foot });
       });
     }
 

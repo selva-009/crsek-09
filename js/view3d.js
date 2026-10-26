@@ -44,71 +44,263 @@
     return tex;
   }
 
+  // ---------- players ----------
+  // Jointed low-poly rig: hips -> torso -> shoulders -> elbows, hips -> knees -> feet.
+  // Proportions are human (1.8 m), not blocky, and every joint is animated.
+  const PART = {};
+
+  function boxPart(THREE, w, h, d, mat, key) {
+    if (key && PART[key]) return new THREE.Mesh(PART[key], mat);
+    const g = new THREE.BoxGeometry(w, h, d);
+    if (key) PART[key] = g;
+    return new THREE.Mesh(g, mat);
+  }
+
   function makePerson(THREE, kit, role) {
-    const g = new THREE.Group();
-    const skin = 0xb98a63;
-    const kitMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(kit || '#7fd1ae'), roughness: 0.75 });
-    const padMat = new THREE.MeshStandardMaterial({ color: 0xf2f4f6, roughness: 0.6 });
-    const skinMat = new THREE.MeshStandardMaterial({ color: skin, roughness: 0.8 });
-    const darkMat = new THREE.MeshStandardMaterial({ color: 0x1d2a35, roughness: 0.8 });
+    const root = new THREE.Group();
+    const kitMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(kit || '#7fd1ae'), roughness: 0.72 });
+    const trimMat = new THREE.MeshStandardMaterial({ color: 0xf3f6f8, roughness: 0.6 });
+    const trouserMat = new THREE.MeshStandardMaterial({ color: 0xf0f2f4, roughness: 0.85 });
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0xb98a63, roughness: 0.85 });
+    const darkMat = new THREE.MeshStandardMaterial({ color: 0x1c2732, roughness: 0.8 });
+    const padMat = new THREE.MeshStandardMaterial({ color: 0xf6f7f8, roughness: 0.55 });
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0xd9c39a, roughness: 0.7 });
 
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.55, 0.22), kitMat);
-    torso.position.y = 1.06; torso.castShadow = true;
-    g.add(torso);
+    const hips = new THREE.Group();
+    hips.position.y = 0.92;
+    root.add(hips);
 
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.145, 14, 12), skinMat);
-    head.position.y = 1.46; head.castShadow = true;
-    g.add(head);
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.52, 0.22), kitMat);
+    torso.position.y = 0.26;
+    torso.castShadow = true;
+    hips.add(torso);
 
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.155, 0.16, 0.07, 12), kitMat);
-    cap.position.y = 1.57;
-    g.add(cap);
+    const collar = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.05, 0.20), trimMat);
+    collar.position.y = 0.53;
+    hips.add(collar);
 
-    const legs = [];
-    [-0.1, 0.1].forEach((x) => {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.62, 0.16), role === 'bat' ? padMat : darkMat);
-      leg.position.set(x, 0.48, 0);
-      leg.castShadow = true;
-      const pivot = new THREE.Group();
-      pivot.position.set(x, 0.79, 0);
-      leg.position.set(0, -0.31, 0);
-      pivot.add(leg);
-      g.add(pivot);
-      legs.push(pivot);
-    });
+    // ---- head + helmet ----
+    const headGroup = new THREE.Group();
+    headGroup.position.y = 0.62;
+    hips.add(headGroup);
+    const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.06, 0.08, 8), skinMat);
+    neck.position.y = 0.04;
+    headGroup.add(neck);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.115, 14, 12), skinMat);
+    head.position.y = 0.18;
+    head.castShadow = true;
+    headGroup.add(head);
 
-    const arms = [];
-    [-0.24, 0.24].forEach((x) => {
-      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.46, 0.12), skinMat);
-      arm.position.set(0, -0.23, 0);
-      const pivot = new THREE.Group();
-      pivot.position.set(x, 1.26, 0);
-      pivot.add(arm);
-      g.add(pivot);
-      arms.push(pivot);
-    });
+    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.132, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.62), kitMat);
+    helmet.position.y = 0.20;
+    headGroup.add(helmet);
+    const peak = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.02, 0.11), kitMat);
+    peak.position.set(0, 0.21, 0.13);
+    headGroup.add(peak);
+    // grille
+    for (let i = -1; i <= 1; i++) {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.13, 0.012), darkMat);
+      bar.position.set(i * 0.055, 0.13, 0.125);
+      headGroup.add(bar);
+    }
+    const grilleBar = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.012, 0.012), darkMat);
+    grilleBar.position.set(0, 0.10, 0.125);
+    headGroup.add(grilleBar);
 
+    // ---- arms ----
+    function arm(side) {
+      const shoulder = new THREE.Group();
+      shoulder.position.set(side * 0.235, 0.46, 0);
+      hips.add(shoulder);
+      const upper = new THREE.Mesh(new THREE.CapsuleGeometry ? new THREE.CapsuleGeometry(0.048, 0.20, 4, 8) : new THREE.CylinderGeometry(0.048, 0.045, 0.28, 8), kitMat);
+      upper.position.y = -0.14;
+      upper.castShadow = true;
+      shoulder.add(upper);
+      const elbow = new THREE.Group();
+      elbow.position.y = -0.28;
+      shoulder.add(elbow);
+      const fore = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.038, 0.26, 8), skinMat);
+      fore.position.y = -0.13;
+      fore.castShadow = true;
+      elbow.add(fore);
+      const glove = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.10, 0.075), role === 'bat' || role === 'keep' ? padMat : skinMat);
+      glove.position.y = -0.30;
+      elbow.add(glove);
+      return { shoulder, elbow, glove };
+    }
+    const armL = arm(-1);
+    const armR = arm(1);
+
+    // ---- legs ----
+    function leg(side) {
+      const hip = new THREE.Group();
+      hip.position.set(side * 0.105, -0.02, 0);
+      hips.add(hip);
+      const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.068, 0.058, 0.40, 8), trouserMat);
+      thigh.position.y = -0.20;
+      thigh.castShadow = true;
+      hip.add(thigh);
+      const knee = new THREE.Group();
+      knee.position.y = -0.40;
+      hip.add(knee);
+      const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.045, 0.40, 8), trouserMat);
+      shin.position.y = -0.20;
+      shin.castShadow = true;
+      knee.add(shin);
+      const foot = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.06, 0.24), darkMat);
+      foot.position.set(0, -0.42, 0.05);
+      knee.add(foot);
+      if (role === 'bat' || role === 'keep') {
+        const pad = new THREE.Mesh(new THREE.BoxGeometry(0.135, 0.46, 0.075), padMat);
+        pad.position.set(0, -0.22, 0.085);
+        knee.add(pad);
+      }
+      return { hip, knee, foot };
+    }
+    const legL = leg(-1);
+    const legR = leg(1);
+
+    // ---- bat ----
     let bat = null;
     if (role === 'bat') {
-      bat = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.62, 0.16), new THREE.MeshStandardMaterial({ color: 0xdcc79a, roughness: 0.7 }));
-      bat.position.set(0.02, -0.62, 0.06);
-      bat.rotation.z = 0.18;
-      arms[1].add(bat);
+      bat = new THREE.Group();
+      const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.26, 6), darkMat);
+      handle.position.y = 0.13;
+      bat.add(handle);
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.42, 0.035), woodMat);
+      blade.position.y = -0.21;
+      blade.castShadow = true;
+      bat.add(blade);
+      bat.position.set(0, -0.30, 0.02);
+      bat.rotation.x = -0.25;
+      armR.elbow.add(bat);
     }
 
-    // marker ring for the player you control
     const ring = new THREE.Mesh(
-      new THREE.RingGeometry(0.42, 0.56, 24),
+      new THREE.RingGeometry(0.40, 0.54, 24),
       new THREE.MeshBasicMaterial({ color: 0x4fc3f7, transparent: true, opacity: 0.9, side: THREE.DoubleSide })
     );
     ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.03;
+    ring.position.y = 0.02;
     ring.visible = false;
-    g.add(ring);
+    root.add(ring);
 
-    g.scale.setScalar(1.15);
-    g.userData = { legs, arms, torso, head, bat, ring, kit, role, phase: Math.random() * 6.28 };
-    return g;
+    root.userData = {
+      role, kit,
+      joints: { hips, torso, headGroup, armL, armR, legL, legR, bat },
+      pose: { // live pose, blended toward target each frame
+        torsoX: 0, torsoY: 0, hipsY: 0.92,
+        armLX: 0, armRX: 0, armLZ: 0.08, armRZ: -0.08,
+        elbowL: 0, elbowR: 0,
+        hipLX: 0, hipRX: 0, kneeL: 0, kneeR: 0, rootY: 0, tilt: 0
+      },
+      ring,
+      phase: Math.random() * 6.28
+    };
+    return root;
+  }
+
+  // target pose for a given animation state
+  function targetPose(state, t, person, extra) {
+    const p = person.userData.pose;
+    const role = person.userData.role;
+    const out = {
+      torsoX: 0, torsoY: 0, hipsY: 0.92,
+      armLX: 0, armRX: 0, armLZ: 0.08, armRZ: -0.08,
+      elbowL: 0, elbowR: 0, hipLX: 0, hipRX: 0, kneeL: 0, kneeR: 0, rootY: 0, tilt: 0
+    };
+    const breathe = Math.sin(t * 1.7 + person.userData.phase) * 0.02;
+
+    if (state === 'stance') {
+      out.torsoX = 0.10 + breathe;
+      out.hipsY = 0.90;
+      out.kneeL = 0.18; out.kneeR = 0.18;
+      out.hipLX = -0.12; out.hipRX = 0.10;
+      out.armRX = -0.55 + Math.sin(t * 1.3) * 0.05;
+      out.elbowR = 0.75;
+      out.armLX = -0.35;
+      out.elbowL = 0.45;
+      out.torsoY = -0.22;
+    } else if (state === 'swing') {
+      const k = Math.min(1, (extra && extra.k != null) ? extra.k : 0);
+      const swing = Math.sin(k * Math.PI);
+      out.torsoY = -0.22 + swing * 0.85;
+      out.torsoX = 0.10 + swing * 0.10;
+      out.armRX = -0.55 - swing * 1.9;
+      out.elbowR = 0.75 - swing * 0.55;
+      out.armLX = -0.35 - swing * 0.7;
+      out.hipLX = -0.12; out.hipRX = 0.10;
+      out.kneeL = 0.18 + swing * 0.15;
+    } else if (state === 'run') {
+      const sw = Math.sin(t * 11 + person.userData.phase);
+      out.hipLX = sw * 0.75; out.hipRX = -sw * 0.75;
+      out.kneeL = Math.max(0, -sw) * 1.1; out.kneeR = Math.max(0, sw) * 1.1;
+      out.armLX = -sw * 0.85; out.armRX = sw * 0.85;
+      out.elbowL = 0.35; out.elbowR = 0.35;
+      out.torsoX = 0.16;
+      out.hipsY = 0.92 + Math.abs(sw) * 0.03;
+    } else if (state === 'bowl') {
+      const k = (extra && extra.k != null) ? extra.k : 0;   // 0 = start of run-up, 1 = release
+      out.armRX = -0.4 - Math.sin(k * Math.PI) * 3.0;        // windmill
+      out.armLX = 0.35;
+      out.elbowR = Math.max(0, 0.9 - k * 1.4);
+      out.torsoY = -0.15 + k * 0.55;
+      out.torsoX = 0.12 + k * 0.12;
+      out.kneeL = 0.25 + k * 0.35; out.kneeR = 0.25;
+      out.hipLX = -0.3 * k; out.hipRX = 0.25;
+      out.rootY = Math.sin(k * Math.PI) * 0.06;
+    } else if (state === 'dive') {
+      out.tilt = -1.15;
+      out.hipsY = 0.55;
+      out.armLX = -1.5; out.armRX = -1.5;
+      out.hipLX = -0.35; out.hipRX = 0.2;
+      out.kneeL = 0.5; out.kneeR = 0.2;
+    } else if (state === 'catch') {
+      out.armLX = -2.6; out.armRX = -2.6;
+      out.elbowL = 0.3; out.elbowR = 0.3;
+      out.torsoX = -0.08;
+      out.kneeL = 0.3; out.kneeR = 0.3;
+      out.hipsY = 0.86;
+    } else if (state === 'throw') {
+      const k = (extra && extra.k != null) ? extra.k : 0.4;
+      out.armRX = -2.2 + k * 3.0;
+      out.elbowR = 0.9 - k * 0.8;
+      out.armLX = -0.6;
+      out.torsoY = -0.3 + k * 0.5;
+      out.hipLX = -0.2; out.kneeL = 0.25;
+    } else if (state === 'celebrate') {
+      const b = Math.abs(Math.sin(t * 5));
+      out.armLX = -2.9; out.armRX = -2.9;
+      out.rootY = b * 0.12;
+      out.torsoX = -0.05;
+    } else { // idle
+      out.torsoX = 0.03 + breathe;
+      out.armLX = 0.05; out.armRX = 0.05;
+    }
+    return out;
+  }
+
+  function applyPose(person, target, dt) {
+    const j = person.userData.joints;
+    const p = person.userData.pose;
+    const k = Math.min(1, dt * 14);
+    Object.keys(target).forEach((key) => {
+      if (typeof target[key] === 'number') p[key] = p[key] + (target[key] - p[key]) * k;
+    });
+    j.torso.rotation.x = p.torsoX;
+    j.torso.rotation.y = p.torsoY;
+    j.hips.position.y = p.hipsY + p.rootY;
+    j.armL.shoulder.rotation.x = p.armLX;
+    j.armR.shoulder.rotation.x = p.armRX;
+    j.armL.shoulder.rotation.z = p.armLZ;
+    j.armR.shoulder.rotation.z = p.armRZ;
+    j.armL.elbow.rotation.x = p.elbowL;
+    j.armR.elbow.rotation.x = p.elbowR;
+    j.legL.hip.rotation.x = p.hipLX;
+    j.legR.hip.rotation.x = p.hipRX;
+    j.legL.knee.rotation.x = p.kneeL;
+    j.legR.knee.rotation.x = p.kneeR;
+    person.rotation.z = p.tilt;
   }
 
   function create(canvas, opts) {
@@ -260,15 +452,45 @@
     const striker = makePerson(THREE, '#7fd1ae', 'bat');
     const nonStriker = makePerson(THREE, '#7fd1ae', 'bat');
     const bowler = makePerson(THREE, '#ffb4a2', 'bowl');
-    scene.add(striker, nonStriker, bowler);
+    const keeper = makePerson(THREE, '#f0b429', 'keep');
+    keeper.visible = false;
+    scene.add(striker, nonStriker, bowler, keeper);
 
     const fielderPool = [];
-    for (let i = 0; i < 13; i++) {
+    for (let i = 0; i < 12; i++) {
       const f = makePerson(THREE, '#e8eef2', 'field');
       f.visible = false;
       scene.add(f);
       fielderPool.push(f);
     }
+
+    // bowling preview: dashed line to where the ball will pitch
+    const PITCH_Y = { yorker: 9.5, full: 8.0, good: 6.2, short: 3.4 };
+    const previewGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+    const previewLine = new THREE.Line(previewGeo, new THREE.LineDashedMaterial({
+      color: 0xffd54f, dashSize: 0.55, gapSize: 0.35, transparent: true, opacity: 0.9
+    }));
+    previewLine.visible = false;
+    scene.add(previewLine);
+    const previewRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.35, 0.46, 20),
+      new THREE.MeshBasicMaterial({ color: 0xffd54f, transparent: true, opacity: 0.8, side: THREE.DoubleSide })
+    );
+    previewRing.rotation.x = -Math.PI / 2;
+    previewRing.visible = false;
+    scene.add(previewRing);
+
+    function setPreview(info) {
+      const py = PITCH_Y[info.length] != null ? PITCH_Y[info.length] : 6.2;
+      const px = (info.line || 0) * 1.2;
+      const pts = [new THREE.Vector3(0.45, 2.0, -10.5), new THREE.Vector3(px, 0.06, py)];
+      previewGeo.setFromPoints(pts);
+      previewLine.computeLineDistances();
+      previewLine.visible = true;
+      previewRing.position.set(px, 0.05, py);
+      previewRing.visible = true;
+    }
+    function clearPreview() { previewLine.visible = false; previewRing.visible = false; }
 
     const cam = { mode: 'batter', auto: true, look: new THREE.Vector3(0, 1.2, -6), pos: new THREE.Vector3(0, 9, 26), t: 0 };
     const tmp = new THREE.Vector3();
@@ -291,34 +513,14 @@
     }
     function cameraMode() { return cam.mode; }
 
-    function placePerson(p, ex, ey, faceZ, dt, moving, isMine) {
-      p.position.set(ex, 0, ey);
-      const ud = p.userData;
-      if (faceZ !== null) p.rotation.y = faceZ;
-      ud.ring.visible = !!isMine;
-      const speed = moving ? 11 : 1.6;
-      ud.phase += dt * speed;
-      const swing = moving ? Math.sin(ud.phase) * 0.7 : Math.sin(ud.phase) * 0.05;
-      ud.legs[0].rotation.x = swing;
-      ud.legs[1].rotation.x = -swing;
-      ud.arms[0].rotation.x = -swing * 0.8;
-      ud.arms[1].rotation.x = swing * 0.8;
-      ud.torso.position.y = 1.06 + (moving ? Math.abs(Math.sin(ud.phase)) * 0.04 : Math.sin(ud.phase) * 0.012);
+    function placePerson(person, ex, ey, faceY, isMine) {
+      person.position.set(ex, 0, ey);
+      if (faceY !== null) person.rotation.y = faceY;
+      person.userData.ring.visible = !!isMine;
     }
 
-    function animateBat(person, t, swingT) {
-      const ud = person.userData;
-      if (!ud.bat) return;
-      if (swingT != null) {
-        const k = Math.min(1, swingT / 0.34);
-        ud.arms[1].rotation.x = -2.2 * Math.sin(k * Math.PI);
-        ud.arms[0].rotation.x = -1.1 * Math.sin(k * Math.PI);
-        ud.torso.rotation.y = 0.5 * Math.sin(k * Math.PI);
-      } else {
-        ud.torso.rotation.y *= 0.9;
-        ud.arms[1].rotation.x = 0.35 + Math.sin(t * 1.5) * 0.05;
-        ud.arms[0].rotation.x = 0.3;
-      }
+    function animate(person, state, t, dt, extra) {
+      applyPose(person, targetPose(state, t, person, extra), dt);
     }
 
     let lastPhase = null;
@@ -336,31 +538,42 @@
 
       // striker / non-striker
       const batTeam = state.teams[state.batTeam];
-      const strikerKit = (batTeam.players.find((p) => p.id === state.strikerId) || {}).kit || '#7fd1ae';
-      const nsKit = (batTeam.players.find((p) => p.id === state.nonStrikerId) || {}).kit || '#7fd1ae';
-      striker.userData.torso.material.color.set(strikerKit);
-      nonStriker.userData.torso.material.color.set(nsKit);
+      const strikerP = batTeam.players.find((p) => p.id === state.strikerId) || {};
+      const nsP = batTeam.players.find((p) => p.id === state.nonStrikerId) || {};
+      striker.userData.joints.torso.material.color.set(strikerP.kit || '#7fd1ae');
+      nonStriker.userData.joints.torso.material.color.set(nsP.kit || '#7fd1ae');
 
-      placePerson(striker, 0, 10, Math.PI, dt, false, state.strikerId === myPid);
-      placePerson(nonStriker, 0.9, -10, 0, dt, false, state.nonStrikerId === myPid);
-      animateBat(striker, t, swingStart != null ? (performance.now() - swingStart) / 1000 : null);
+      placePerson(striker, 0, 10, Math.PI, state.strikerId === myPid);
+      placePerson(nonStriker, 0.9, -10, 0, state.nonStrikerId === myPid);
 
-      // bowler run-up
+      if (swingStart != null) {
+        const k = Math.min(1, (performance.now() - swingStart) / 340);
+        animate(striker, 'swing', t, dt, { k: k });
+      } else {
+        animate(striker, 'stance', t, dt);
+      }
+      animate(nonStriker, 'stance', t, dt);
+
+      // bowler run-up and release
       const bowlerZ = -16 + runUp * 5;
-      placePerson(bowler, 0.6, bowlerZ, Math.PI, dt, runUp > 0.02 && runUp < 1, state.bowlerId === myPid);
-      bowler.userData.arms[1].rotation.x = -1.2 * runUp;
+      placePerson(bowler, 0.6, bowlerZ, Math.PI, state.bowlerId === myPid);
+      if (runUp > 0.02) animate(bowler, 'bowl', t, dt, { k: runUp });
+      else animate(bowler, state.phase === 'inplay' ? 'idle' : 'stance', t, dt);
 
-      // fielders
+      // fielders (keeper handled separately so it can wear pads)
       const fs = state.fielders || [];
-      fielderPool.forEach((f, i) => {
-        const sp = fs[i];
-        if (!sp) { f.visible = false; return; }
-        f.visible = true;
-        const kit = sp.kit || (sp.keeper ? '#f0b429' : '#e8eef2');
-        f.userData.torso.material.color.set(kit);
+      let poolIdx = 0;
+      keeper.visible = false;
+      fielderPool.forEach((f) => { f.visible = false; });
+      fs.forEach((sp) => {
+        let person;
+        if (sp.keeper) { person = keeper; keeper.visible = true; }
+        else { person = fielderPool[poolIdx++]; if (!person) return; person.visible = true; }
+        person.userData.joints.torso.material.color.set(sp.kit || (sp.keeper ? '#f0b429' : '#e8eef2'));
+        placePerson(person, sp.x, sp.y, Math.PI, sp.ownerId && sp.ownerId === myPid);
         const moving = state.phase === 'inplay';
-        placePerson(f, sp.x, sp.y, Math.PI, dt, moving, sp.ownerId && sp.ownerId === myPid);
-        if (sp.keeper) f.userData.legs.forEach((l) => { l.rotation.x = 0.25; });
+        const diving = sp.ownerId && sp.diveUntil && sp.diveUntil > Date.now();
+        animate(person, diving ? 'dive' : moving ? 'run' : 'stance', t, dt);
       });
 
       // ball
@@ -406,9 +619,9 @@
         targetLook.set(cx, 0.8, cy);
       } else if (cam.mode === 'batter') {
         // over the striker's shoulder down the pitch; pulls back as the ball flies away
-        const back = 23 + Math.min(9, ballDist * 0.22);
-        targetPos.set(bx * 0.22, 7.5 + Math.min(4, ballDist * 0.12), back);
-        targetLook.set(bx * 0.4, 1.3, live ? Math.min(6, (10 + by) / 2) : -4);
+        const back = 19 + Math.min(7, ballDist * 0.2);
+        targetPos.set(bx * 0.2, 4.4 + Math.min(3, ballDist * 0.1), back);
+        targetLook.set(bx * 0.35, 1.15, live ? Math.min(6, (10 + by) / 2) : -4);
       } else if (cam.mode === 'broadcast') {
         // follows the ball so the batter, ball and chasing fielders stay in frame
         const back = clamp(30 + ballDist * 0.4, 30, 50);
@@ -419,17 +632,13 @@
         targetPos.set(0, 74, 0.1);
         targetLook.set(bx * 0.3, 0, by * 0.4);
       }
-      // on a phase change, cut straight to the new framing instead of gliding,
-      // so the ball is never off-screen while the camera travels
-      if (state.phase !== lastPhase) {
-        camera.position.copy(targetPos);
-        cam.look.copy(targetLook);
-      } else {
-        const k = Math.min(1, dt * (live ? 6 : 3));
-        camera.position.lerp(targetPos, k);
-        tmp.copy(targetLook);
-        cam.look.lerp(tmp, k);
-      }
+      // smooth, frame-rate independent easing — fast enough that the ball never
+      // leaves the frame, slow enough that it never looks like a cut
+      const rate = live ? 9 : state.phase === 'flight' ? 7 : 4.5;
+      const k = 1 - Math.exp(-dt * rate);
+      camera.position.lerp(targetPos, k);
+      tmp.copy(targetLook);
+      cam.look.lerp(tmp, k);
       camera.lookAt(cam.look);
 
       renderer.render(scene, camera);
@@ -451,7 +660,7 @@
 
     function onShot() { swingStart = performance.now(); setTimeout(() => { swingStart = null; }, 420); }
 
-    return { renderer, scene, camera, resize, render, setCameraMode, setAutoCamera, cameraMode, onShot, dispose() { renderer.dispose(); } };
+    return { renderer, scene, camera, resize, render, setCameraMode, setAutoCamera, cameraMode, setPreview, clearPreview, onShot, dispose() { renderer.dispose(); } };
   }
 
   global.View3D = { create };
