@@ -5,6 +5,7 @@
   'use strict';
 
   const T = () => global.THREE;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
   function stripeTexture(THREE) {
     const c = document.createElement('canvas');
@@ -18,6 +19,7 @@
       g.fillRect((i * 512) / 8, 0, 512 / 8, 512);
     }
     const tex = new THREE.CanvasTexture(c);
+    if (THREE.sRGBEncoding !== undefined) tex.encoding = THREE.sRGBEncoding;
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(1, 1);
     return tex;
@@ -36,6 +38,7 @@
       g.fillRect(Math.random() * 1024, Math.random() * 256, 3, 3);
     }
     const tex = new THREE.CanvasTexture(c);
+    if (THREE.sRGBEncoding !== undefined) tex.encoding = THREE.sRGBEncoding;
     tex.wrapS = THREE.RepeatWrapping;
     tex.repeat.set(6, 1);
     return tex;
@@ -112,8 +115,11 @@
     const THREE = T();
     if (!THREE) return null;
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(2, global.devicePixelRatio || 1));
-    renderer.shadowMap.enabled = true;
+    const cores = (navigator.hardwareConcurrency || 4);
+    const hiEnd = (global.devicePixelRatio || 1) >= 2 && cores >= 6;
+    let quality = hiEnd ? 2 : 1;
+    renderer.setPixelRatio(Math.min(hiEnd ? 2 : 1.5, global.devicePixelRatio || 1));
+    renderer.shadowMap.enabled = hiEnd;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     if (THREE.sRGBEncoding !== undefined) renderer.outputEncoding = THREE.sRGBEncoding;
     renderer.toneMapping = THREE.NoToneMapping;
@@ -227,7 +233,7 @@
 
     // ---- ball ----
     const ball = new THREE.Mesh(
-      new THREE.SphereGeometry(0.075, 16, 12),
+      new THREE.SphereGeometry(0.105, 16, 12),
       new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35, metalness: 0.05 })
     );
     ball.castShadow = true;
@@ -264,7 +270,7 @@
       fielderPool.push(f);
     }
 
-    const cam = { mode: 'broadcast', look: new THREE.Vector3(0, 2, 3), pos: new THREE.Vector3(0, 24, -44), t: 0 };
+    const cam = { mode: 'batter', auto: true, look: new THREE.Vector3(0, 1.2, -6), pos: new THREE.Vector3(0, 9, 26), t: 0 };
     const tmp = new THREE.Vector3();
 
     function resize() {
@@ -272,10 +278,18 @@
       const w = Math.max(1, r.width), h = Math.max(1, r.height);
       renderer.setSize(w, h, false);
       camera.aspect = w / h;
+      const wide = w / h < 0.75;         // portrait phone
+      camera.fov = wide ? 62 : 50;
       camera.updateProjectionMatrix();
     }
 
-    function setCameraMode(m) { cam.mode = m; }
+    function setCameraMode(m, auto) { cam.mode = m; if (!auto) cam.auto = false; }
+    function setAutoCamera(role) {
+      if (!cam.auto) return;
+      const want = (role === 'bat' || role === 'nonstriker' || role === 'waitbat') ? 'batter' : 'broadcast';
+      cam.mode = want;
+    }
+    function cameraMode() { return cam.mode; }
 
     function placePerson(p, ex, ey, faceZ, dt, moving, isMine) {
       p.position.set(ex, 0, ey);
@@ -310,9 +324,11 @@
     let lastPhase = null;
     let swingStart = null;
     let runUp = 0;
+    let frames = 0, frameAcc = 0;
 
     function render(state, myPid, dt) {
       if (!state) { renderer.clear(); return; }
+      if (document.hidden) return;
       const t = performance.now() / 1000;
 
       if (state.phase === 'flight') runUp = Math.min(1, runUp + dt * 2.4);
@@ -330,8 +346,8 @@
       animateBat(striker, t, swingStart != null ? (performance.now() - swingStart) / 1000 : null);
 
       // bowler run-up
-      const bz = -16 + runUp * 5;
-      placePerson(bowler, 0.6, bz, Math.PI, dt, runUp > 0.02 && runUp < 1, state.bowlerId === myPid);
+      const bowlerZ = -16 + runUp * 5;
+      placePerson(bowler, 0.6, bowlerZ, Math.PI, dt, runUp > 0.02 && runUp < 1, state.bowlerId === myPid);
       bowler.userData.arms[1].rotation.x = -1.2 * runUp;
 
       // fielders
@@ -365,31 +381,77 @@
         ball.visible = false; ballShadow.visible = false; landingRing.visible = false;
       }
 
-      // camera
+      // camera — always keep batter, bowler, ball and fielders in frame
       const targetPos = cam.pos.clone();
       const targetLook = cam.look.clone();
-      if (cam.mode === 'broadcast') {
-        targetPos.set(0, 24 + (b ? Math.min(5, (b.z || 0) * 0.25) : 0), -44);
-        targetLook.set(b ? b.x * 0.3 : 0, 2, b ? b.y * 0.35 + 4 : 4);
+      const live = state.phase === 'inplay';
+      const bx = b ? b.x : 0, by = b ? b.y : 0, bz = b ? (b.z || 0) : 0;
+
+      // how far the ball is from the batsman drives how wide the shot is framed
+      const ballDist = b ? Math.hypot(bx, by - 10) : 0;
+
+      if (live && b) {
+        // action camera: frame the ball together with the two closest fielders,
+        // so the chase is always on screen even on a narrow portrait phone
+        const near = (fs || [])
+          .slice()
+          .sort((a, c) => Math.hypot(a.x - bx, a.y - by) - Math.hypot(c.x - bx, c.y - by))
+          .slice(0, 2);
+        const cx = (bx + near.reduce((sum, f) => sum + f.x, 0)) / (1 + near.length);
+        const cy = (by + near.reduce((sum, f) => sum + f.y, 0)) / (1 + near.length);
+        const spread = Math.max(6, ...near.map((f) => Math.hypot(f.x - bx, f.y - by)));
+        const back = clamp(13 + spread * 0.95, 13, 36);
+        const up = clamp(7 + spread * 0.55, 7, 24);
+        targetPos.set(cx * 0.7, up, cy - back);
+        targetLook.set(cx, 0.8, cy);
       } else if (cam.mode === 'batter') {
-        targetPos.set(0, 7.5, 27);
-        targetLook.set(b ? b.x * 0.4 : 0, 1.3, b ? b.y * 0.5 : -3);
+        // over the striker's shoulder down the pitch; pulls back as the ball flies away
+        const back = 23 + Math.min(9, ballDist * 0.22);
+        targetPos.set(bx * 0.22, 7.5 + Math.min(4, ballDist * 0.12), back);
+        targetLook.set(bx * 0.4, 1.3, live ? Math.min(6, (10 + by) / 2) : -4);
+      } else if (cam.mode === 'broadcast') {
+        // follows the ball so the batter, ball and chasing fielders stay in frame
+        const back = clamp(30 + ballDist * 0.4, 30, 50);
+        const up = clamp(19 + ballDist * 0.22, 19, 34);
+        targetPos.set(bx * 0.45, up, -back);
+        targetLook.set(bx * 0.5, 1.5, (10 + by) / 2 + 2);
       } else {
-        targetPos.set(0, 72, 0.1);
-        targetLook.set(0, 0, 0);
+        targetPos.set(0, 74, 0.1);
+        targetLook.set(bx * 0.3, 0, by * 0.4);
       }
-      camera.position.lerp(targetPos, Math.min(1, dt * 2.4));
-      tmp.copy(targetLook);
-      cam.look.lerp(tmp, Math.min(1, dt * 2.4));
+      // on a phase change, cut straight to the new framing instead of gliding,
+      // so the ball is never off-screen while the camera travels
+      if (state.phase !== lastPhase) {
+        camera.position.copy(targetPos);
+        cam.look.copy(targetLook);
+      } else {
+        const k = Math.min(1, dt * (live ? 6 : 3));
+        camera.position.lerp(targetPos, k);
+        tmp.copy(targetLook);
+        cam.look.lerp(tmp, k);
+      }
       camera.lookAt(cam.look);
 
       renderer.render(scene, camera);
+
+      // adaptive quality: if the phone is struggling, drop resolution then shadows
+      frames++;
+      frameAcc += dt;
+      if (frames >= 90) {
+        const avg = frameAcc / frames;
+        if (avg > 0.028 && quality > 0) {
+          quality--;
+          if (quality === 1) renderer.setPixelRatio(1);
+          else if (quality === 0) { renderer.shadowMap.enabled = false; sun.castShadow = false; }
+        }
+        frames = 0; frameAcc = 0;
+      }
       lastPhase = state.phase;
     }
 
     function onShot() { swingStart = performance.now(); setTimeout(() => { swingStart = null; }, 420); }
 
-    return { renderer, scene, camera, resize, render, setCameraMode, onShot, dispose() { renderer.dispose(); } };
+    return { renderer, scene, camera, resize, render, setCameraMode, setAutoCamera, cameraMode, onShot, dispose() { renderer.dispose(); } };
   }
 
   global.View3D = { create };

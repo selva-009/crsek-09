@@ -517,9 +517,10 @@
   };
   $('camBtn').onclick = () => {
     if (!app.use3d || !app.view3d) { toast('Camera options are for the 3D view'); return; }
-    const modes = ['broadcast', 'batter', 'top'];
-    app.camera = modes[(modes.indexOf(app.camera) + 1) % modes.length];
-    app.view3d.setCameraMode(app.camera);
+    const modes = ['batter', 'broadcast', 'top'];
+    const current = app.view3d.cameraMode ? app.view3d.cameraMode() : app.camera;
+    app.camera = modes[(modes.indexOf(current) + 1) % modes.length];
+    app.view3d.setCameraMode(app.camera, false);
     toast('Camera: ' + app.camera);
   };
 
@@ -551,6 +552,7 @@
       $('tossSub').textContent = 'You won the toss. Bat or bowl?';
     } else $('tossOverlay').classList.add('hidden');
 
+    if (app.view3d) app.view3d.setAutoCamera(role);
     if (role === 'bowl' && st.phase === 'delivery' && !app.meterStart) app.meterStart = performance.now();
     if (st.phase !== 'delivery') app.meterStart = 0;
 
@@ -587,6 +589,7 @@
   function updateHUD(st) {
     const bt = st.teams[st.batTeam];
     const ov = Math.floor(st.balls / 6) + '.' + (st.balls % 6);
+    $('teamName').textContent = bt.name;
     $('scoreLine').textContent = bt.score.r + '/' + bt.score.w;
     $('overLine').textContent = ov + ' / ' + st.overs;
     if (st.target) {
@@ -596,16 +599,19 @@
     } else $('reqLine').textContent = '';
     const s = bt.players.find((p) => p.id === st.strikerId);
     $('batterLine').textContent = s ? s.name + ' ' + s.r + ' (' + s.b + ')' : '—';
-    $('bowlerLine').textContent = st.bowlerName || '—';
+    const dl = st.delivery;
+    $('bowlerLine').textContent = (st.bowlerName || '—') +
+      (dl && st.phase === 'delivery' ? ' · ' + dl.length + ' ' + dl.type : '');
     $('overDots').innerHTML = (st.thisOver || []).map((d) =>
       '<span class="' + (d === 'W' ? 'w' : d === '4' || d === '6' ? 'b' : '') + '">' + d + '</span>').join('');
   }
 
   // ---------- controls ----------
   const SHOT_BTNS = [
-    ['drive', 'Drive', 'along the ground'],
+    ['drive', 'Drive', 'straight / off'],
     ['loft', 'Loft', 'over the top'],
-    ['pull', 'Pull', 'across the line'],
+    ['pull', 'Pull', 'leg side'],
+    ['cut', 'Cut', 'behind point'],
     ['sweep', 'Sweep', 'behind square'],
     ['defend', 'Defend', 'safe']
   ];
@@ -763,11 +769,15 @@
       meter.querySelector('.zone').style.width = '22%';
     } else if (st.phase === 'flight' && app.role === 'bat') {
       meter.classList.remove('hidden');
-      const p = clamp((performance.now() - app.flightStart) / 900, 0, 1);
+      const dl = st.delivery || {};
+      const dur = dl.duration || 1;
+      const contact = dl.contactAt || dur * 0.9;
+      const p = clamp((performance.now() - app.flightStart) / 1000 / dur, 0, 1);
+      const zoneStart = clamp((contact / dur - 0.11) * 100, 2, 88);
       meter.querySelector('.mark').style.left = (p * 100) + '%';
       meter.querySelector('.fill').style.width = (p * 100) + '%';
-      meter.querySelector('.zone').style.left = '52%';
-      meter.querySelector('.zone').style.width = '16%';
+      meter.querySelector('.zone').style.left = zoneStart + '%';
+      meter.querySelector('.zone').style.width = '22%';
     } else meter.classList.add('hidden');
 
     // throw prompt: shown when a human fielder is holding the ball

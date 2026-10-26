@@ -23,7 +23,7 @@ bots so a match always starts. Humans always bat before bots.
 
 | Role | Controls |
 |---|---|
-| Batting (striker only) | Joystick aims, Drive / Loft / Pull / Sweep / Defend swings. Timing beats power. |
+| Batting (striker only) | Joystick aims, then Drive / Loft / Pull / Cut / Sweep / Defend. Each shot has its own side and trajectory; timing beats power. |
 | Non-striker | **CALL THE RUN** to steal an extra run while the ball is live. |
 | Bowling | Joystick sets line, buttons set length and type, **RELEASE** stops the meter in the green. |
 | Fielding | Joystick moves your fielder, **CATCH** when the ball is near, **DIVE** to extend reach. |
@@ -39,10 +39,23 @@ caught, LBW, run out, stumped; strike rotation on odd runs and at over end; batt
 next-man-in; innings break and target; chase, tie and win; per-batter and per-bowler scorecard;
 player of the match.
 
+**Ball physics** — the delivery is simulated, not faked: the ball leaves the hand at 2.2 m, pitches
+at a point set by the length (a yorker lands at 9.5 m, a bouncer at 3.4 m), bounces to a height the
+length dictates (0.28 m for a yorker, 1.7 m for a short ball), and moves laterally through the air
+with swing and off the pitch with spin. Whether you are bowled or trapped LBW comes from where the
+ball actually finished — line and height at the stumps — not from a dice roll. Shots bounce too:
+ground strokes skip off the surface, lofted ones land and roll.
+
 **3D presentation** — oval ground with mowing stripes and boundary rope, 30-yard circle, pitch
 with creases, stumps and bails, tiered stands with a crowd, floodlights, low-poly players with
 procedural run, bowl and bat-swing animation, ball flight with height, shadow and landing marker.
-The classic 2D top-down view is still one tap away.
+The camera cuts automatically to your role — over the striker's shoulder when you bat, broadcast
+when you bowl — and during a shot it frames the ball together with the two nearest fielders so the
+chase stays on screen on a narrow phone. The ◎ button overrides it; 3D ↔ 2D is one tap away.
+
+**Performance** — pixel ratio is capped and shadows only switch on for devices reporting enough
+cores and a high-density screen. If average frame time slips past ~28 ms the renderer drops
+resolution first and shadows second. Rendering pauses while the tab is hidden.
 
 **Multiplayer** — host-authoritative peer-to-peer over WebRTC. Private rooms with codes and invite
 links, public matchmaking slots, reconnection (a dropped player's seat is covered by a bot and
@@ -90,6 +103,12 @@ cd crsek-09 && python3 -m http.server 8080
 
 The build is checked three ways before each deploy:
 
+- `test/rules2.js` — trajectory and feel: the ball travels down the pitch, pitches, bounces and
+  swings; a yorker and a bouncer pitch at different points and bounce to different heights; perfect
+  timing scores 1.0 against 0.1 for early or late; Drive / Pull / Cut / Sweep leave at 12°, −65°,
+  105° and −122°.
+- `test/visible.js` — projects every player through the live camera and asserts the ball, striker
+  and nearest fielders are inside the frame during a shot.
 - `test/rules.js` — drives the engine headlessly in Node: no-ball awards one extra and a free
   hit without counting the ball, a free hit blocks a wicket, a wide costs one and is re-bowled,
   odd runs rotate strike, a wicket brings the next batter in and credits the bowler, innings

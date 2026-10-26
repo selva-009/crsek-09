@@ -26,13 +26,20 @@
     { key: 'deepmidwicket', name: 'Deep mid-wicket', ang: -96, r: 52 }
   ];
 
+  // bias = the side each shot naturally goes (positive = off side, negative = leg side)
   const SHOTS = {
-    drive: { power: 0.82, air: 0.05, risk: 0.03, label: 'Drive' },
-    loft: { power: 1.16, air: 0.95, risk: 0.17, label: 'Loft' },
-    pull: { power: 1.0, air: 0.32, risk: 0.11, label: 'Pull' },
-    sweep: { power: 0.88, air: 0.2, risk: 0.08, label: 'Sweep' },
-    defend: { power: 0.32, air: 0, risk: 0.01, label: 'Defend' }
+    drive: { power: 0.85, air: 0.05, risk: 0.03, bias: 12, label: 'Drive' },
+    loft: { power: 1.18, air: 0.95, risk: 0.17, bias: 0, label: 'Loft' },
+    pull: { power: 1.02, air: 0.30, risk: 0.10, bias: -65, label: 'Pull' },
+    cut: { power: 0.92, air: 0.14, risk: 0.09, bias: 105, label: 'Cut' },
+    sweep: { power: 0.88, air: 0.18, risk: 0.08, bias: -122, label: 'Sweep' },
+    defend: { power: 0.30, air: 0, risk: 0.01, bias: 0, label: 'Defend' }
   };
+
+  // delivery model: how long the ball takes, where it pitches, how high it bounces
+  const SPEEDS = { pace: 0.92, swing: 0.98, spin: 1.12, slower: 1.28 };
+  const PITCH_Y = { yorker: 9.5, full: 8.0, good: 6.2, short: 3.4 };
+  const BOUNCE_H = { yorker: 0.28, full: 0.55, good: 0.95, short: 1.7 };
 
   const BOUNDARY = 66;
   const BATSMAN_POS = { x: 0, y: 10 };
@@ -239,14 +246,53 @@
         type: d.type || 'pace', release: rel, accuracy: clamp(acc, 0, 1),
         wide: wide, noBall: overstep
       };
+      const pd = this.pendingDelivery;
+      const duration = (SPEEDS[pd.type] || 1.0) * (1.06 - 0.12 * pd.accuracy);
+      const pitchY = PITCH_Y[pd.length] != null ? PITCH_Y[pd.length] : 6.2;
+      const swingDir = Math.random() < 0.5 ? -1 : 1;
+      pd.traj = {
+        duration: duration,
+        pPitch: clamp((pitchY + 10) / 20, 0.3, 0.93),
+        pitchY: pitchY,
+        bounceH: (BOUNCE_H[pd.length] != null ? BOUNCE_H[pd.length] : 0.95) * (0.85 + 0.3 * Math.random()),
+        swing: pd.type === 'swing' ? swingDir * 0.55 : (Math.random() - 0.5) * 0.1,
+        spin: pd.type === 'spin' ? swingDir * 0.65 : 0,
+        contactAt: duration * 0.9
+      };
       this.phase = 'flight';
       this.ballStart = Date.now();
-      this.ball = { x: BOWLER_POS.x, y: BOWLER_POS.y, z: 2, from: 'bowler' };
-      this.emit('delivery', { bowlerId: playerId, d: this.pendingDelivery, t0: this.ballStart });
+      this.ball = { x: pd.line, y: BOWLER_POS.y, z: 2.2, from: 'bowler' };
+      this.emit('delivery', {
+        bowlerId: playerId, d: pd, t0: this.ballStart,
+        duration: pd.traj.duration, contactAt: pd.traj.contactAt
+      });
       this.broadcast();
       const s = this.striker();
       if (s && s.bot) this.botBat();
-      this.later(1050, () => this.onArrival());
+      this.tickDelivery();
+    }
+
+    // ball travelling from hand to bat, with a pitch and a bounce
+    tickDelivery() {
+      if (this.phase !== 'flight' || !this.pendingDelivery) return;
+      const t = this.pendingDelivery.traj;
+      const p = clamp((Date.now() - this.ballStart) / 1000 / t.duration, 0, 1);
+      const y = BOWLER_POS.y + 20 * p;
+      let z;
+      if (p <= t.pPitch) {
+        const k = t.pPitch > 0 ? p / t.pPitch : 1;
+        z = 2.2 * (1 - k) + 0.02;
+      } else {
+        const q = clamp((p - t.pPitch) / (1 - t.pPitch), 0, 1);
+        z = t.bounceH * Math.sin(Math.min(1, q * 1.35) * (Math.PI / 2));
+      }
+      let x = this.pendingDelivery.line;
+      x += t.swing * Math.sin(p * Math.PI) * 0.7;             // movement in the air
+      if (p > t.pPitch) x += t.spin * (p - t.pPitch) * 1.6;   // turn off the pitch
+      this.ball = { x: x, y: y, z: Math.max(0.02, z), from: 'bowler' };
+      if (p >= 1) return this.onArrival();
+      this.broadcast();
+      this.later(40, () => this.tickDelivery());
     }
 
     onArrival() {
@@ -256,13 +302,15 @@
       if (d && d.wide) return this.finishBall({ kind: 'wide', runs: 1 });
       const shot = this.pendingShot;
       if (!shot) {
-        const atStumps = Math.abs(d.line) < 0.55 && ['yorker', 'full', 'good'].includes(d.length);
+        const bx = this.ball ? this.ball.x : d.line;
+        const bz = this.ball ? this.ball.z : 1;
+        const atStumps = Math.abs(bx) < 0.42 && bz < 0.9;
         if (atStumps) {
           const r = Math.random();
           if (r < 0.5) return this.finishBall({ kind: 'bowled', runs: 0 });
-          if (r < 0.63) return this.finishBall({ kind: 'lbw', runs: 0 });
+          if (r < 0.64) return this.finishBall({ kind: 'lbw', runs: 0 });
         }
-        return this.finishBall({ kind: 'dot', runs: 0, text: 'Beaten!' });
+        return this.finishBall({ kind: 'dot', runs: 0, text: bz > 1.2 ? 'Beaten by the bounce!' : 'Beaten!' });
       }
       this.startInPlay(shot);
     }
@@ -273,14 +321,16 @@
       if (!striker || striker.id !== playerId) return;   // only the striker bats
       if (this.pendingShot) return;
       const t = (Date.now() - this.ballStart) / 1000;
+      const traj = this.pendingDelivery && this.pendingDelivery.traj;
+      const contactAt = traj ? traj.contactAt : 0.6;
       const shot = {
         type: SHOTS[s.type] ? s.type : 'drive',
         dir: clamp(s.dir || 0, -180, 180),
         t: t
       };
-      shot.quality = clamp(1 - Math.abs(t - IDEAL_CONTACT) / CONTACT_WINDOW, 0, 1);
+      shot.quality = clamp(1 - Math.abs(t - contactAt) / 0.2, 0, 1);
       this.pendingShot = shot;
-      if (t > IDEAL_CONTACT + CONTACT_WINDOW) this.onArrival();
+      if (t > contactAt + 0.2) this.onArrival();
     }
 
     // Bot striker reads the delivery rather than swinging blind.
@@ -289,13 +339,15 @@
       if (!s || !s.bot) return;
       const d = this.pendingDelivery || { length: 'good', line: 0 };
       let type;
-      if (d.length === 'short') type = pick(['pull', 'pull', 'loft', 'drive']);
+      if (d.length === 'short') type = pick(['pull', 'pull', 'cut', 'loft']);
       else if (d.length === 'yorker') type = pick(['defend', 'drive', 'defend']);
       else if (d.length === 'full') type = pick(['drive', 'drive', 'loft', 'sweep']);
-      else type = pick(['drive', 'drive', 'defend', 'pull', 'sweep']);
+      else type = pick(['drive', 'drive', 'defend', 'pull', 'cut', 'sweep']);
       const skill = 0.55 + Math.random() * 0.25;
       const good = Math.random() < skill;
-      const t = good ? rand(0.53, 0.67) : rand(0.32, 0.95);
+      const traj = this.pendingDelivery && this.pendingDelivery.traj;
+      const contactAt = traj ? traj.contactAt : 0.6;
+      const t = good ? contactAt + rand(-0.06, 0.06) : contactAt + rand(-0.22, 0.22);
       const dir = pick([0, 0, 12, -12, 35, -35, 65, -65, 100, -100, 140, -140]);
       this.later(Math.max(120, t * 1000 - 40), () => {
         if (!this.pendingShot && this.phase === 'flight') this.setShot(s.id, { dir, type });
@@ -309,7 +361,9 @@
       const def = SHOTS[shot.type];
       const power = def.power * (0.35 + 0.65 * q) * (0.85 + 0.3 * (d ? d.accuracy : 0.6));
       const dist = 12 + power * 58;
-      const rad = (shot.dir * Math.PI) / 180;
+      const aim = clamp(shot.dir, -38, 38);
+      const finalDir = clamp(def.bias + aim, -180, 180);
+      const rad = (finalDir * Math.PI) / 180;
       const landing = {
         x: BATSMAN_POS.x + Math.sin(rad) * dist,
         y: BATSMAN_POS.y - Math.cos(rad) * dist
@@ -326,7 +380,7 @@
         this.ball.landing = { x: rand(-4, 4), y: BATSMAN_POS.y + rand(4, 12) };
         this.ball.duration = 0.7;
       }
-      this.emit('shot', { strikerId: this.striker().id, shot: { type: shot.type, dir: shot.dir, quality: q }, ball: this.ball });
+      this.emit('shot', { strikerId: this.striker().id, shot: { type: shot.type, dir: finalDir, quality: q }, ball: this.ball });
       this.broadcast();
       this.tickBall();
     }
@@ -338,7 +392,13 @@
       const p = clamp((now - b.start) / (b.duration * 1000), 0, 1);
       b.x = BATSMAN_POS.x + (b.landing.x - BATSMAN_POS.x) * p;
       b.y = BATSMAN_POS.y + (b.landing.y - BATSMAN_POS.y) * p;
-      b.z = b.airborne ? 1.2 + Math.sin(p * Math.PI) * (6 + b.power * 14) : 0.4;
+      if (b.airborne) {
+        const landAt = 0.82;
+        if (p < landAt) b.z = 1.2 + Math.sin((p / landAt) * Math.PI) * (5 + b.power * 13);
+        else b.z = Math.abs(Math.sin(((p - landAt) / (1 - landAt)) * Math.PI)) * 1.2 * (1 - p) + 0.08;
+      } else {
+        b.z = Math.abs(Math.sin(p * Math.PI * 2.2)) * 1.05 * (1 - p * 0.8) + 0.07;
+      }
 
       // AI fielders chase the ball
       this.fielders.forEach((f) => {
@@ -666,7 +726,14 @@
         fielders: this.fielders.map((f) => ({
           key: f.key, name: f.name, x: f.x, y: f.y, ownerId: f.ownerId, bot: f.bot, keeper: f.keeper, kit: f.kit
         })),
-        ball: this.ball, delivery: this.pendingDelivery,
+        ball: this.ball,
+        delivery: this.pendingDelivery ? {
+          line: this.pendingDelivery.line, length: this.pendingDelivery.length,
+          type: this.pendingDelivery.type, wide: this.pendingDelivery.wide,
+          noBall: this.pendingDelivery.noBall, accuracy: this.pendingDelivery.accuracy,
+          duration: this.pendingDelivery.traj ? this.pendingDelivery.traj.duration : 1,
+          contactAt: this.pendingDelivery.traj ? this.pendingDelivery.traj.contactAt : 0.9
+        } : null,
         batOrder: this.teams[this.batTeam].players.map((p) => ({ name: p.name, out: p.out, r: p.r, b: p.b }))
       };
     }

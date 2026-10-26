@@ -347,3 +347,13 @@ input:focus { border-color: var(--accent); }
 .kit-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 
 .result-row.mom { border: 1px solid rgba(255,213,79,0.5); color: #ffd54f; font-size: 13px; }
+
+/* ---------- branding ---------- */
+.tagline {
+  font-size: 12px; letter-spacing: 3px; text-transform: uppercase;
+  color: var(--accent-2); font-weight: 700; margin: 0 0 8px;
+}
+.team-name {
+  font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase;
+  color: var(--muted); font-weight: 700; align-self: center;
+}
