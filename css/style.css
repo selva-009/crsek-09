@@ -398,3 +398,21 @@ input:focus { border-color: var(--accent); }
 }
 .gbtn.pressed { transform: scale(0.94); filter: brightness(1.25); }
 .gbtn .k { font-size: 9px; font-weight: 600; color: var(--muted); letter-spacing: 0.5px; }
+
+/* ---------- DRS ---------- */
+.review-overlay {
+  position: absolute; inset: 0; background: rgba(3, 10, 7, 0.78);
+  display: grid; place-items: center; padding: 20px; backdrop-filter: blur(6px); z-index: 30;
+}
+.rev-tag {
+  font-size: 10px; letter-spacing: 2px; font-weight: 800;
+  color: #ff8a80; border: 1px solid rgba(255, 82, 82, 0.5);
+  padding: 4px 10px; border-radius: 20px;
+}
+.drs-pill {
+  position: absolute; right: 0; top: 0;
+  font-size: 9px; font-weight: 800; letter-spacing: 1px;
+  padding: 3px 8px; border-radius: 20px;
+  background: rgba(79, 195, 247, 0.18); color: #9fe4ff;
+  border: 1px solid rgba(79, 195, 247, 0.4);
+}

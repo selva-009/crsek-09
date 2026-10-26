@@ -105,6 +105,7 @@
       </div>
       <div class="over-dots" id="overDots"></div>
       <div class="free-hit hidden" id="freeHit">FREE HIT</div>
+      <div class="drs-pill" id="drsPill">DRS 1</div>
       <div class="players-line">
         <span id="batterLine">—</span>
         <span class="dot">•</span>
@@ -138,6 +139,15 @@
     <div class="throw-row hidden" id="throwRow">
       <button class="gbtn hot" data-end="striker">THROW · STRIKER'S END</button>
       <button class="gbtn hot" data-end="nonstriker">THROW · NON-STRIKER'S END</button>
+    </div>
+
+    <div class="review-overlay hidden" id="reviewOverlay">
+      <div class="card center-card">
+        <div class="rev-tag">DRS · THIRD UMPIRE</div>
+        <h2 id="revTitle">LBW — review?</h2>
+        <p class="fine" id="revSub">Ball tracking is ready.</p>
+        <button class="btn primary wide" id="revBtn">REVIEW</button>
+      </div>
     </div>
 
     <div class="toss-overlay hidden" id="tossOverlay">

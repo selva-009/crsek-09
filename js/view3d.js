@@ -58,9 +58,10 @@
 
   function makePerson(THREE, kit, role) {
     const root = new THREE.Group();
-    const kitMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(kit || '#7fd1ae'), roughness: 0.72 });
+    const isUmp = role === 'umpire';
+    const kitMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(isUmp ? '#f2f2ec' : (kit || '#7fd1ae')), roughness: 0.72 });
     const trimMat = new THREE.MeshStandardMaterial({ color: 0xf3f6f8, roughness: 0.6 });
-    const trouserMat = new THREE.MeshStandardMaterial({ color: 0xf0f2f4, roughness: 0.85 });
+    const trouserMat = new THREE.MeshStandardMaterial({ color: isUmp ? 0x1b2430 : 0xf0f2f4, roughness: 0.85 });
     const skinMat = new THREE.MeshStandardMaterial({ color: 0xb98a63, roughness: 0.85 });
     const darkMat = new THREE.MeshStandardMaterial({ color: 0x1c2732, roughness: 0.8 });
     const padMat = new THREE.MeshStandardMaterial({ color: 0xf6f7f8, roughness: 0.55 });
@@ -91,21 +92,41 @@
     head.castShadow = true;
     headGroup.add(head);
 
-    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.132, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.62), kitMat);
-    helmet.position.y = 0.20;
-    headGroup.add(helmet);
-    const peak = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.02, 0.11), kitMat);
-    peak.position.set(0, 0.21, 0.13);
-    headGroup.add(peak);
-    // grille
-    for (let i = -1; i <= 1; i++) {
-      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.13, 0.012), darkMat);
-      bar.position.set(i * 0.055, 0.13, 0.125);
-      headGroup.add(bar);
+    if (isUmp) {
+      const hatMat = new THREE.MeshStandardMaterial({ color: 0xf7f7f2, roughness: 0.85 });
+      const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.115, 0.09, 12), hatMat);
+      crown.position.y = 0.29;
+      headGroup.add(crown);
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.015, 16), hatMat);
+      brim.position.y = 0.245;
+      headGroup.add(brim);
+      // face
+      const eyes = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.018, 0.02), darkMat);
+      eyes.position.set(0, 0.20, 0.108);
+      headGroup.add(eyes);
+    } else {
+      const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.132, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.62), kitMat);
+      helmet.position.y = 0.20;
+      headGroup.add(helmet);
+      const peak = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.02, 0.11), kitMat);
+      peak.position.set(0, 0.21, 0.13);
+      headGroup.add(peak);
+      for (let i = -1; i <= 1; i++) {
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.13, 0.012), darkMat);
+        bar.position.set(i * 0.055, 0.13, 0.125);
+        headGroup.add(bar);
+      }
+      const grilleBar = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.012, 0.012), darkMat);
+      grilleBar.position.set(0, 0.10, 0.125);
+      headGroup.add(grilleBar);
     }
-    const grilleBar = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.012, 0.012), darkMat);
-    grilleBar.position.set(0, 0.10, 0.125);
-    headGroup.add(grilleBar);
+
+    // face detail for outfield players too: eyes and a jaw shadow
+    if (!isUmp) {
+      const eyes = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.016, 0.02), darkMat);
+      eyes.position.set(0, 0.185, 0.105);
+      headGroup.add(eyes);
+    }
 
     // ---- arms ----
     function arm(side) {
@@ -150,6 +171,9 @@
       const foot = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.06, 0.24), darkMat);
       foot.position.set(0, -0.42, 0.05);
       knee.add(foot);
+      const sole = new THREE.Mesh(new THREE.BoxGeometry(0.105, 0.02, 0.245), trimMat);
+      sole.position.set(0, -0.455, 0.05);
+      knee.add(sole);
       if (role === 'bat' || role === 'keep') {
         const pad = new THREE.Mesh(new THREE.BoxGeometry(0.135, 0.46, 0.075), padMat);
         pad.position.set(0, -0.22, 0.085);
@@ -171,8 +195,9 @@
       blade.position.y = -0.21;
       blade.castShadow = true;
       bat.add(blade);
-      bat.position.set(0, -0.30, 0.02);
-      bat.rotation.x = -0.25;
+      bat.position.set(0.07, -0.34, 0.11);
+      bat.rotation.x = -0.45;
+      bat.rotation.z = 0.2;
       armR.elbow.add(bat);
     }
 
@@ -331,9 +356,12 @@
     sun.shadow.camera.left = -60; sun.shadow.camera.right = 60;
     sun.shadow.camera.top = 60; sun.shadow.camera.bottom = -60;
     scene.add(sun);
-    const fill = new THREE.DirectionalLight(0xa8d8ff, 0.2);
+    const fill = new THREE.DirectionalLight(0xa8d8ff, 0.14);
     fill.position.set(-30, 30, 30);
     scene.add(fill);
+    const rim = new THREE.DirectionalLight(0x9be8c4, 0.16);
+    rim.position.set(-10, 18, 40);
+    scene.add(rim);
 
     // ---- ground ----
     const ground = new THREE.Mesh(
@@ -464,6 +492,46 @@
       fielderPool.push(f);
     }
 
+    // two on-field umpires: bowler's end and square leg
+    const umpireA = makePerson(THREE, '#f2f2ec', 'umpire');
+    const umpireB = makePerson(THREE, '#f2f2ec', 'umpire');
+    umpireA.position.set(-1.5, 0, -12.4);
+    umpireB.position.set(-9.5, 0, 1.5);
+    umpireA.rotation.y = 0;
+    umpireB.rotation.y = -Math.PI / 2;
+    scene.add(umpireA, umpireB);
+
+    // DRS ball-tracking path
+    const reviewGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()]);
+    const reviewLine = new THREE.Line(reviewGeo, new THREE.LineDashedMaterial({
+      color: 0xff5252, dashSize: 0.35, gapSize: 0.25, transparent: true, opacity: 0.95
+    }));
+    reviewLine.visible = false;
+    scene.add(reviewLine);
+    const reviewMark = new THREE.Mesh(
+      new THREE.SphereGeometry(0.16, 12, 10),
+      new THREE.MeshBasicMaterial({ color: 0xff5252, transparent: true, opacity: 0.9 })
+    );
+    reviewMark.visible = false;
+    scene.add(reviewMark);
+
+    function setReviewPath(info) {
+      if (!info) return;
+      const targetX = info.x || 0;
+      const targetZ = 10;
+      const pts = [
+        new THREE.Vector3(0, 2.0, -10),
+        new THREE.Vector3(targetX * 0.5, 0.9, 0),
+        new THREE.Vector3(targetX, Math.max(0.15, info.z || 0.4), targetZ)
+      ];
+      reviewGeo.setFromPoints(pts);
+      reviewLine.computeLineDistances();
+      reviewLine.visible = true;
+      reviewMark.position.copy(pts[2]);
+      reviewMark.visible = true;
+    }
+    function clearReviewPath() { reviewLine.visible = false; reviewMark.visible = false; }
+
     // bowling preview: dashed line to where the ball will pitch
     const PITCH_Y = { yorker: 9.5, full: 8.0, good: 6.2, short: 3.4 };
     const previewGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
@@ -576,6 +644,9 @@
         animate(person, diving ? 'dive' : moving ? 'run' : 'stance', t, dt);
       });
 
+      animate(umpireA, 'stance', t, dt);
+      animate(umpireB, 'stance', t * 0.8, dt);
+
       // ball
       const b = state.ball;
       if (b) {
@@ -619,9 +690,10 @@
         targetLook.set(cx, 0.8, cy);
       } else if (cam.mode === 'batter') {
         // over the striker's shoulder down the pitch; pulls back as the ball flies away
-        const back = 19 + Math.min(7, ballDist * 0.2);
-        targetPos.set(bx * 0.2, 4.4 + Math.min(3, ballDist * 0.1), back);
-        targetLook.set(bx * 0.35, 1.15, live ? Math.min(6, (10 + by) / 2) : -4);
+        // offset to the off side so the striker sits clear of the shot buttons
+        const back = 22 + Math.min(6, ballDist * 0.18);
+        targetPos.set(2.6 + bx * 0.2, 9.2 + Math.min(2.5, ballDist * 0.09), back);
+        targetLook.set(2.2 + bx * 0.35, 0.6, live ? Math.min(6, (10 + by) / 2) : -10);
       } else if (cam.mode === 'broadcast') {
         // follows the ball so the batter, ball and chasing fielders stay in frame
         const back = clamp(30 + ballDist * 0.4, 30, 50);
@@ -660,7 +732,7 @@
 
     function onShot() { swingStart = performance.now(); setTimeout(() => { swingStart = null; }, 420); }
 
-    return { renderer, scene, camera, resize, render, setCameraMode, setAutoCamera, cameraMode, setPreview, clearPreview, onShot, dispose() { renderer.dispose(); } };
+    return { renderer, scene, camera, resize, render, setCameraMode, setAutoCamera, cameraMode, setPreview, clearPreview, setReviewPath, clearReviewPath, onShot, dispose() { renderer.dispose(); } };
   }
 
   global.View3D = { create };

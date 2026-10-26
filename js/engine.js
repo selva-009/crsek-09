@@ -93,6 +93,9 @@
       this.ballStart = 0;
       this.freeHit = false;
       this.mom = null;
+      this.reviews = [1, 1];        // one DRS review per team per innings
+      this.pendingReview = null;
+      this.lastTracking = null;
     }
 
     // ---------- helpers ----------
@@ -165,6 +168,8 @@
       this.balls = 0;
       this.thisOver = [];
       this.freeHit = false;
+      this.reviews = [1, 1];
+      this.pendingReview = null;
       this.strikerIdx = 0;
       this.nonStrikerIdx = 1 % bt.players.length;
       this.lastBowlerIdx = -1;
@@ -599,8 +604,98 @@
       };
       this.emit('result', this.lastResult);
       if (wicket || runs === 4 || runs === 6) this.emit('replay', { text: this.lastResult.text, kind: res.kind });
+
+      // an LBW can be reviewed by the batting side before play continues
+      if (res.kind === 'lbw' && this.reviews[this.batTeam] > 0) {
+        const tracking = this.computeTracking();
+        this.lastTracking = tracking;
+        this.pendingReview = {
+          batterId: s.id, batterName: s.name, team: this.batTeam,
+          tracking: tracking, expires: Date.now() + 7000
+        };
+        this.phase = 'review';
+        this.broadcast();
+        this.emit('reviewWindow', { batterName: s.name, tracking: tracking, seconds: 7 });
+        this.later(7000, () => { if (this.phase === 'review') this.resolveReview(false, null); });
+        return;
+      }
+
       this.broadcast();
       this.later(1200, () => this.afterBall(res));
+    }
+
+    // Where the ball would have gone: the same delivery data the umpire saw.
+    computeTracking() {
+      const d = this.pendingDelivery;
+      const bx = this.ball ? this.ball.x : (d ? d.line : 0);
+      const bz = this.ball ? this.ball.z : 0.5;
+      const lateral = Math.abs(bx);
+      const pitchX = d && d.traj ? d.line + d.traj.swing * 0.4 : bx;
+      const pitchedOutsideLeg = pitchX < -0.95;
+      let verdict = 'hitting';
+      if (pitchedOutsideLeg) verdict = 'missing';
+      else if (lateral > 0.30) verdict = 'missing';
+      else if (lateral > 0.17) verdict = 'umpires-call';
+      return {
+        x: +bx.toFixed(2), z: +bz.toFixed(2), lateral: +lateral.toFixed(2),
+        pitchX: +pitchX.toFixed(2), verdict: verdict,
+        height: bz < 0.72 ? 'under the bails' : 'above the stumps'
+      };
+    }
+
+    callReview(playerId) {
+      if (this.phase !== 'review' || !this.pendingReview) return;
+      const t = this.playerById(playerId);
+      if (!t) return;
+      const teamIdx = this.teams.findIndex((team) => team.players.some((p) => p.id === playerId));
+      if (teamIdx !== this.pendingReview.team) return;   // only the batting side reviews
+      if (this.reviews[teamIdx] <= 0) return;
+      this.resolveReview(true, playerId);
+    }
+
+    resolveReview(taken, playerId) {
+      if (this.phase !== 'review' || !this.pendingReview) return;
+      this.clearTimers();
+      const pr = this.pendingReview;
+      const bt = this.bat();
+      const b = this.bowler();
+      const tracking = pr.tracking;
+      let out = true;
+      let note = '';
+
+      if (taken) {
+        this.reviews[pr.team] -= 1;
+        if (tracking.verdict === 'missing') {
+          out = false;
+          note = 'NOT OUT — ball missing the stumps';
+          this.reviews[pr.team] += 1;              // successful review is kept
+          // roll the wicket back
+          bt.score.w = Math.max(0, bt.score.w - 1);
+          const dismissed = bt.players.find((p) => p.id === pr.batterId);
+          if (dismissed) { dismissed.out = false; dismissed.how = null; }
+          if (b) b.bWkts = Math.max(0, b.bWkts - 1);
+          const last = this.thisOver.length - 1;
+          if (last >= 0) this.thisOver[last] = '•';
+        } else if (tracking.verdict === 'umpires-call') {
+          note = "UMPIRE'S CALL — out stands";
+          this.reviews[pr.team] += 1;              // umpire's call keeps the review
+        } else {
+          note = 'OUT — ball was hitting the stumps';
+        }
+      } else {
+        note = 'No review taken';
+      }
+
+      this.lastResult = {
+        kind: out ? 'lbw' : 'dot', runs: 0,
+        text: note, wicket: out, batter: pr.batterName,
+        bowler: b ? b.name : '', freeHit: false, review: true, tracking: tracking
+      };
+      this.pendingReview = null;
+      this.phase = 'result';
+      this.broadcast();
+      this.emit('reviewResult', { out: out, note: note, tracking: tracking, taken: taken, reviewsLeft: this.reviews.slice() });
+      this.later(1400, () => this.afterBall(out ? { kind: 'lbw', runs: 0 } : { kind: 'dot', runs: 0 }));
     }
 
     resultText(res, s) {
@@ -733,6 +828,13 @@
         thisOver: this.thisOver.slice(),
         lastResult: this.lastResult, msg: this.msg, result: this.result,
         tossWinner: this.tossWinner, captainId: this.captainId, mom: this.mom,
+        reviews: this.reviews.slice(),
+        pendingReview: this.pendingReview ? {
+          batterId: this.pendingReview.batterId, batterName: this.pendingReview.batterName,
+          team: this.pendingReview.team, tracking: this.pendingReview.tracking,
+          expires: this.pendingReview.expires
+        } : null,
+        lastTracking: this.lastTracking,
         fielders: this.fielders.map((f) => ({
           key: f.key, name: f.name, x: f.x, y: f.y, ownerId: f.ownerId, bot: f.bot, keeper: f.keeper, kit: f.kit
         })),

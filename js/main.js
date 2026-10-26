@@ -439,6 +439,7 @@
       case 'move': app.runner.fielderInput(playerPid, { x: p.x, y: p.y }); break;
       case 'action': app.runner.fielderAction(playerPid, p.kind, p.target); break;
       case 'run': app.runner.callRun(playerPid); break;
+      case 'review': app.runner.callReview(playerPid); break;
       case 'bat': if (app.runner.captainId === playerPid) app.runner.chooseBat(!!p.bat); break;
     }
   }
@@ -459,6 +460,25 @@
       if (p.kind === 'six' || p.kind === 'four') blip(680, 0.16, 'sine');
       else if (p.wicket) blip(120, 0.22, 'sawtooth');
       else if (p.kind === 'noball') blip(300, 0.14, 'triangle');
+    } else if (type === 'reviewWindow') {
+      app.reviewUntil = Date.now() + (p.seconds || 7) * 1000;
+      const st = app.state;
+      const myTeam = st ? st.teams.findIndex((t) => t.players.some((x) => x.id === app.pid)) : -1;
+      const canReview = !!(st && st.pendingReview && myTeam === st.pendingReview.team && (st.reviews[myTeam] || 0) > 0);
+      $('revTitle').textContent = 'LBW — ' + p.batterName;
+      $('revSub').textContent = canReview ? 'Ball tracking is ready. Send it upstairs?' : 'The batting side is deciding…';
+      $('revBtn').style.display = canReview ? '' : 'none';
+      $('reviewOverlay').classList.remove('hidden');
+      blip(520, 0.1, 'triangle');
+    } else if (type === 'reviewResult') {
+      $('reviewOverlay').classList.add('hidden');
+      flash(p.note);
+      if (app.view3d && p.tracking && app.view3d.setReviewPath) {
+        app.view3d.setReviewPath(p.tracking);
+        clearTimeout(app.reviewPathTimer);
+        app.reviewPathTimer = setTimeout(() => app.view3d.clearReviewPath(), 4500);
+      }
+      toast('DRS: ' + p.note + ' · reviews left ' + (p.reviewsLeft || []).join('/'), 3200);
     } else if (type === 'inningsBreak') toast('Innings break — target ' + p.target, 3200);
     else if (type === 'matchEnd') { recordMatch(); showResult(p); }
   }
@@ -558,6 +578,12 @@
     if (st.phase !== 'delivery') app.meterStart = 0;
 
     $('freeHit').classList.toggle('hidden', !st.freeHit);
+    const myTeamIdx = st.teams.findIndex((t) => t.players.some((x) => x.id === app.pid));
+    if (myTeamIdx >= 0 && st.reviews) {
+      $('drsPill').classList.remove('hidden');
+      $('drsPill').textContent = 'DRS ' + st.reviews[myTeamIdx];
+    } else $('drsPill').classList.add('hidden');
+    if (st.phase !== 'review') $('reviewOverlay').classList.add('hidden');
     updateBanner(role, st);
   }
 
@@ -680,6 +706,16 @@
   function markSel() {
     document.querySelectorAll('[data-len]').forEach((b) => b.classList.toggle('sel', b.dataset.len === app.selLength));
   }
+
+  $('revBtn').onclick = () => {
+    sendIntent('review', {});
+    $('reviewOverlay').classList.add('hidden');
+  };
+
+  $('revBtn').onclick = () => {
+    sendIntent('review', {});
+    $('reviewOverlay').classList.add('hidden');
+  };
 
   $('tossBat').onclick = () => { sendIntent('bat', { bat: true }); $('tossOverlay').classList.add('hidden'); };
   $('tossBowl').onclick = () => { sendIntent('bat', { bat: false }); $('tossOverlay').classList.add('hidden'); };
@@ -829,6 +865,11 @@
       meter.querySelector('.zone').style.left = zoneStart + '%';
       meter.querySelector('.zone').style.width = '22%';
     } else meter.classList.add('hidden');
+
+    if (st.phase === 'review' && app.reviewUntil) {
+      const left = Math.max(0, Math.ceil((app.reviewUntil - Date.now()) / 1000));
+      $('revSub').textContent = 'Ball tracking ready · ' + left + 's to decide';
+    }
 
     // throw prompt: shown when a human fielder is holding the ball
     const holding = st.ball && st.ball.stopped && st.ball.heldBy === app.pid;

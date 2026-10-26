@@ -57,6 +57,13 @@ chase stays on screen on a narrow phone. The ◎ button overrides it; 3D ↔ 2D 
 cores and a high-density screen. If average frame time slips past ~28 ms the renderer drops
 resolution first and shadows second. Rendering pauses while the tab is hidden.
 
+**Umpires and DRS** — two on-field umpires stand on the field (bowler's end and square leg). An LBW
+opens a seven-second review window for the batting side: one review per team per innings, kept if
+the review succeeds. The third umpire runs ball tracking on the same delivery data the on-field
+umpire saw and returns one of three verdicts — hitting (out stands, review lost), missing (not out,
+wicket rolled back, review kept) or umpire's call (out stands, review kept). The projected path is
+drawn to the stumps in 3D.
+
 **Multiplayer** — host-authoritative peer-to-peer over WebRTC. Private rooms with codes and invite
 links, public matchmaking slots, reconnection (a dropped player's seat is covered by a bot and
 handed straight back when they rejoin), quick chat, kit colours per player, local career stats.
@@ -75,7 +82,10 @@ The same stick is re-purposed per role: aim and footwork when batting, line and 
 
 ## Characters
 
-Players are procedural jointed rigs built in `view3d.js` — hips, torso, shoulders, elbows, hips, knees and feet, with a helmet, grille, peak, pads, gloves, shoes and a two-part bat. Poses blend toward targets each frame (stance, swing, run, bowl, dive, catch, throw, celebrate) rather than snapping between states. They are stylised, not photoreal: see the external assets note below for what that would take.
+Characters are the one place this build is honestly short of "realistic". Asset hosts (Mixamo,
+Quaternius, Kenney) are unreachable from the sandbox this was built in, so nothing has been
+integrated and no account exists. What is here is the best procedural approximation: jointed rigs
+built in `view3d.js` — hips, torso, shoulders, elbows, hips, knees and feet, with a helmet, grille, peak, pads, gloves, shoes and a two-part bat. Poses blend toward targets each frame (stance, swing, run, bowl, dive, catch, throw, celebrate) rather than snapping between states. They are stylised, not photoreal: see the external assets note below for what that would take.
 
 ## Architecture
 
@@ -119,6 +129,12 @@ cd crsek-09 && python3 -m http.server 8080
 
 The build is checked three ways before each deploy:
 
+- `test/drstest.js` — DRS: the window opens on an LBW and blocks play, a missing ball overturns the
+  wicket and returns the batter, a hitting ball is upheld and costs the review, umpire's call keeps
+  both the wicket and the review, the fielding side cannot review, a team with no reviews left
+  cannot review, and letting the clock run out simply continues play.
+- `test/drsui.js` — the same flow in a real browser: the review card appears with a countdown, the
+  REVIEW button sends the decision upstairs, and the verdict, 3D tracking line and DRS counter update.
 - `test/rules2.js` — trajectory and feel: the ball travels down the pitch, pitches, bounces and
   swings; a yorker and a bouncer pitch at different points and bounce to different heights; perfect
   timing scores 1.0 against 0.1 for early or late; Drive / Pull / Cut / Sweep leave at 12°, −65°,
