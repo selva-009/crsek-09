@@ -6,6 +6,11 @@
 
   const T = () => global.THREE;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const PLAYER_MODEL_PATHS = [
+    '/assets/players/cricketer.glb',
+    '/assets/players/player.glb',
+    '/assets/players/batter.glb'
+  ];
 
   function stripeTexture(THREE) {
     const c = document.createElement('canvas');
@@ -42,6 +47,51 @@
     tex.wrapS = THREE.RepeatWrapping;
     tex.repeat.set(6, 1);
     return tex;
+  }
+
+  function makePlayerLoader(THREE) {
+    const loaderCtor = global.GLTFLoader || (THREE && THREE.GLTFLoader);
+    if (!loaderCtor) return null;
+    const loader = new loaderCtor();
+    let index = 0;
+    const loadNext = (resolve, reject) => {
+      const url = PLAYER_MODEL_PATHS[index];
+      if (!url) return resolve(null);
+      index += 1;
+      loader.load(
+        url,
+        (gltf) => { resolve(gltf.scene || gltf.scenes && gltf.scenes[0] || null); },
+        undefined,
+        () => loadNext(resolve, reject)
+      );
+    };
+    return new Promise((resolve) => loadNext(resolve, resolve));
+  }
+
+  function applyRealisticPlayerSwap(root, model, role, kitColor) {
+    if (!model || !root) return root;
+    root.clear();
+    model.traverse((node) => {
+      if (node.isMesh) {
+        node.castShadow = true;
+        node.receiveShadow = true;
+      }
+    });
+    model.scale.setScalar(0.82);
+    model.rotation.y = role === 'bat' ? Math.PI : 0;
+    if (kitColor) {
+      model.traverse((node) => {
+        if (node.isMesh && node.material && node.material.color) {
+          const c = new THREE.Color(kitColor);
+          node.material = node.material.clone();
+          node.material.color.copy(c);
+          if (node.material.emissive) node.material.emissive.setHex(0x111111);
+        }
+      });
+    }
+    root.add(model);
+    root.userData = { ...(root.userData || {}), swapModel: true, role, kit: kitColor };
+    return root;
   }
 
   // ---------- players ----------
@@ -93,7 +143,6 @@
     hips.position.y = 0.96;
     root.add(hips);
 
-    // Pelvis / torso
     const torso = new THREE.Mesh(
       geo('torso_body', () => new THREE.CapsuleGeometry(0.18, 0.48, 8, 16)),
       jerseyMat
@@ -354,7 +403,11 @@
     return root;
   }
 
-  // Each shot has its own footwork, hip/shoulder rotation and bat arc.
+  function createPerson(THREE, kit, role, skinIdx) {
+    const base = makePerson(THREE, kit, role, skinIdx);
+    return base;
+  }
+
   const SHOT_POSE = {
     drive:  { torsoY: 0.95, armR: -2.45, elbowR: 0.15, armL: -1.00, hipL: 0.38, hipR: -0.22, kneeL: 0.38, step: 0.32, crouch: 0 },
     loft:   { torsoY: 0.60, armR: -3.00, elbowR: 0.00, armL: -1.65, hipL: 0.52, hipR: -0.30, kneeL: 0.52, step: 0.44, crouch: 0 },
@@ -364,10 +417,8 @@
     defend: { torsoY: 0.22, armR: -1.00, elbowR: 0.50, armL: -0.60, hipL: 0.22, hipR: -0.10, kneeL: 0.26, step: 0.18, crouch: 0.06 }
   };
 
-  // target pose for a given animation state
   function targetPose(state, t, person, extra) {
     const p = person.userData.pose;
-    const role = person.userData.role;
     const out = {
       torsoX: 0, torsoY: 0, hipsY: 0.94,
       armLX: 0, armRX: 0, armLZ: 0.08, armRZ: -0.08,
@@ -513,7 +564,6 @@
 
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 600);
 
-    // ---- lights ----
     scene.add(new THREE.HemisphereLight(0xbfe6ff, 0x14361f, 0.48));
     const sun = new THREE.DirectionalLight(0xfff4e0, 0.78);
     sun.position.set(28, 60, -20);
@@ -529,7 +579,6 @@
     rim.position.set(-10, 18, 40);
     scene.add(rim);
 
-    // ---- ground ----
     const ground = new THREE.Mesh(
       new THREE.CircleGeometry(80, 72),
       new THREE.MeshStandardMaterial({ map: stripeTexture(THREE), roughness: 0.95 })
@@ -562,26 +611,18 @@
     pitch.receiveShadow = true;
     scene.add(pitch);
 
+    const wicketMat = new THREE.MeshStandardMaterial({ color: 0xf4efe6, roughness: 0.6 });
     [10, -10].forEach((z) => {
-      const crease = new THREE.Mesh(
-        new THREE.BoxGeometry(3.4, 0.01, 0.08),
-        new THREE.MeshBasicMaterial({ color: 0xf7f7f7 })
-      );
+      const crease = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.01, 0.08), new THREE.MeshBasicMaterial({ color: 0xf7f7f7 }));
       crease.position.set(0, 0.09, z);
       scene.add(crease);
       [-0.13, 0, 0.13].forEach((x) => {
-        const stump = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.045, 0.045, 0.72, 8),
-          new THREE.MeshStandardMaterial({ color: 0xf2ede2, roughness: 0.6 })
-        );
+        const stump = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.72, 8), wicketMat);
         stump.position.set(x, 0.44, z);
         stump.castShadow = true;
         scene.add(stump);
       });
-      const bails = new THREE.Mesh(
-        new THREE.BoxGeometry(0.34, 0.03, 0.04),
-        new THREE.MeshStandardMaterial({ color: 0xf2ede2 })
-      );
+      const bails = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.03, 0.04), new THREE.MeshStandardMaterial({ color: 0xf2ede2 }));
       bails.position.set(0, 0.82, z);
       scene.add(bails);
     });
@@ -599,62 +640,47 @@
     });
 
     [[-52, -52], [52, -52], [-52, 52], [52, 52]].forEach(([x, z]) => {
-      const pole = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.5, 0.7, 30, 8),
-        new THREE.MeshStandardMaterial({ color: 0x2a3742, roughness: 0.8 })
-      );
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.7, 30, 8), new THREE.MeshStandardMaterial({ color: 0x2a3742, roughness: 0.8 }));
       pole.position.set(x, 15, z);
       scene.add(pole);
-      const head = new THREE.Mesh(
-        new THREE.BoxGeometry(9, 5, 1),
-        new THREE.MeshStandardMaterial({ color: 0xfff6d8, emissive: 0xfff3cc, emissiveIntensity: 1.4 })
-      );
+      const head = new THREE.Mesh(new THREE.BoxGeometry(9, 5, 1), new THREE.MeshStandardMaterial({ color: 0xfff6d8, emissive: 0xfff3cc, emissiveIntensity: 1.4 }));
       head.position.set(x, 31, z);
       head.lookAt(0, 0, 0);
       scene.add(head);
     });
 
-    const ball = new THREE.Mesh(
-      new THREE.SphereGeometry(0.105, 16, 12),
-      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35, metalness: 0.05 })
-    );
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.105, 16, 12), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35, metalness: 0.05 }));
     ball.castShadow = true;
     ball.visible = false;
     scene.add(ball);
 
-    const ballShadow = new THREE.Mesh(
-      new THREE.CircleGeometry(0.16, 16),
-      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.32 })
-    );
+    const ballShadow = new THREE.Mesh(new THREE.CircleGeometry(0.16, 16), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.32 }));
     ballShadow.rotation.x = -Math.PI / 2;
     ballShadow.visible = false;
     scene.add(ballShadow);
 
-    const landingRing = new THREE.Mesh(
-      new THREE.RingGeometry(0.5, 0.62, 24),
-      new THREE.MeshBasicMaterial({ color: 0xffd54f, transparent: true, opacity: 0.85, side: THREE.DoubleSide })
-    );
+    const landingRing = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.62, 24), new THREE.MeshBasicMaterial({ color: 0xffd54f, transparent: true, opacity: 0.85, side: THREE.DoubleSide }));
     landingRing.rotation.x = -Math.PI / 2;
     landingRing.visible = false;
     scene.add(landingRing);
 
-    const striker = makePerson(THREE, '#7fd1ae', 'bat', 1);
-    const nonStriker = makePerson(THREE, '#7fd1ae', 'bat', 3);
-    const bowler = makePerson(THREE, '#ffb4a2', 'bowl', 0);
-    const keeper = makePerson(THREE, '#f0b429', 'keep', 2);
+    const striker = createPerson(THREE, '#7fd1ae', 'bat', 1);
+    const nonStriker = createPerson(THREE, '#7fd1ae', 'bat', 3);
+    const bowler = createPerson(THREE, '#ffb4a2', 'bowl', 0);
+    const keeper = createPerson(THREE, '#f0b429', 'keep', 2);
     keeper.visible = false;
     scene.add(striker, nonStriker, bowler, keeper);
 
     const fielderPool = [];
     for (let i = 0; i < 12; i++) {
-      const f = makePerson(THREE, '#e8eef2', 'field', i % 5);
+      const f = createPerson(THREE, '#e8eef2', 'field', i % 5);
       f.visible = false;
       scene.add(f);
       fielderPool.push(f);
     }
 
-    const umpireA = makePerson(THREE, '#f2f2ec', 'umpire', 0);
-    const umpireB = makePerson(THREE, '#f2f2ec', 'umpire', 4);
+    const umpireA = createPerson(THREE, '#f2f2ec', 'umpire', 0);
+    const umpireB = createPerson(THREE, '#f2f2ec', 'umpire', 4);
     umpireA.position.set(-1.5, 0, -12.4);
     umpireB.position.set(-9.5, 0, 1.5);
     umpireA.rotation.y = 0;
@@ -667,10 +693,7 @@
     }));
     reviewLine.visible = false;
     scene.add(reviewLine);
-    const reviewMark = new THREE.Mesh(
-      new THREE.SphereGeometry(0.16, 12, 10),
-      new THREE.MeshBasicMaterial({ color: 0xff5252, transparent: true, opacity: 0.9 })
-    );
+    const reviewMark = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), new THREE.MeshBasicMaterial({ color: 0xff5252, transparent: true, opacity: 0.9 }));
     reviewMark.visible = false;
     scene.add(reviewMark);
 
@@ -698,10 +721,7 @@
     }));
     previewLine.visible = false;
     scene.add(previewLine);
-    const previewRing = new THREE.Mesh(
-      new THREE.RingGeometry(0.35, 0.46, 20),
-      new THREE.MeshBasicMaterial({ color: 0xffd54f, transparent: true, opacity: 0.8, side: THREE.DoubleSide })
-    );
+    const previewRing = new THREE.Mesh(new THREE.RingGeometry(0.35, 0.46, 20), new THREE.MeshBasicMaterial({ color: 0xffd54f, transparent: true, opacity: 0.8, side: THREE.DoubleSide }));
     previewRing.rotation.x = -Math.PI / 2;
     previewRing.visible = false;
     scene.add(previewRing);
