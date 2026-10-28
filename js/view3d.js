@@ -45,8 +45,6 @@
   }
 
   // ---------- players ----------
-  // Anatomically proportioned rig: tapered limbs, chest/waist taper, jointed
-  // shoulders, elbows, hips, knees and ankles, with cricket kit built on top.
   const GEO = {};
   const MAT = {};
 
@@ -59,13 +57,12 @@
     return MAT[key];
   }
   function capsule(key, r1, r2, len, m) {
-    const g = geo(key, () => new THREE.CylinderGeometry(r1, r2, len, 10, 1));
+    const g = geo(key, () => new THREE.CapsuleGeometry(r1, len, 4, 10));
     const mesh = new THREE.Mesh(g, m);
     mesh.castShadow = true;
     return mesh;
   }
 
-  // five skin tones so a squad does not look cloned
   const SKINS = [0xc99b73, 0xa9764f, 0x8a5a3b, 0xe0b48c, 0x6f4529];
 
   function makePerson(THREE, kit, role, skinIdx) {
@@ -74,227 +71,258 @@
     const isKeeper = role === 'keep';
     const skinTone = SKINS[(skinIdx == null ? 0 : skinIdx) % SKINS.length];
 
-    const kitMat = mat('kit' + (isUmp ? 'ump' : kit), () => new THREE.MeshStandardMaterial({
-      color: new THREE.Color(isUmp ? '#f2f2ec' : kit), roughness: 0.78, metalness: 0.02
+    const jerseyMat = mat('jersey_' + kit, () => new THREE.MeshPhysicalMaterial({
+      color: new THREE.Color(kit), roughness: 0.72, metalness: 0.04, clearcoat: 0.12, clearcoatRoughness: 0.8
     }));
-    const trimMat = mat('trim', () => new THREE.MeshStandardMaterial({ color: 0xf3f6f8, roughness: 0.6 }));
-    const trouserMat = mat('trouser' + (isUmp ? 'ump' : 'p'), () => new THREE.MeshStandardMaterial({
-      color: isUmp ? 0x1b2430 : 0xf0f2f4, roughness: 0.88
+    const trimMat = mat('trim', () => new THREE.MeshStandardMaterial({ color: 0xf3f6f8, roughness: 0.58 }));
+    const trouserMat = mat('trouser_' + (isUmp ? 'ump' : 'p'), () => new THREE.MeshStandardMaterial({
+      color: isUmp ? 0x1d2732 : 0xf0f2f4, roughness: 0.9
     }));
-    const skinMat = mat('skin' + skinTone, () => new THREE.MeshStandardMaterial({
-      color: skinTone, roughness: 0.72, metalness: 0.0
+    const skinMat = mat('skin_' + skinTone, () => new THREE.MeshPhysicalMaterial({
+      color: skinTone, roughness: 0.75, metalness: 0.0, clearcoat: 0.08, clearcoatRoughness: 0.88
     }));
-    const darkMat = mat('dark', () => new THREE.MeshStandardMaterial({ color: 0x1c2732, roughness: 0.8 }));
-    const padMat = mat('pad', () => new THREE.MeshStandardMaterial({ color: 0xf6f7f8, roughness: 0.62 }));
-    const woodMat = mat('wood', () => new THREE.MeshStandardMaterial({ color: 0xd9c39a, roughness: 0.55 }));
+    const darkMat = mat('dark', () => new THREE.MeshStandardMaterial({ color: 0x1b2330, roughness: 0.82 }));
+    const padMat = mat('pad', () => new THREE.MeshStandardMaterial({ color: 0xf8f9fa, roughness: 0.65 }));
+    const woodMat = mat('wood', () => new THREE.MeshStandardMaterial({ color: 0xd8c59b, roughness: 0.5 }));
     const eyeWhite = mat('eyew', () => new THREE.MeshStandardMaterial({ color: 0xf7f7f5, roughness: 0.35 }));
-    const irisMat = mat('iris', () => new THREE.MeshStandardMaterial({ color: 0x2b1d12, roughness: 0.3 }));
-    const hairMat = mat('hair', () => new THREE.MeshStandardMaterial({ color: 0x1a1512, roughness: 0.9 }));
+    const irisMat = mat('iris', () => new THREE.MeshStandardMaterial({ color: 0x2b1d12, roughness: 0.25 }));
+    const hairMat = mat('hair', () => new THREE.MeshStandardMaterial({ color: 0x181311, roughness: 0.9 }));
+    const shoeMat = mat('shoe', () => new THREE.MeshStandardMaterial({ color: 0x141b22, roughness: 0.9 }));
 
     const hips = new THREE.Group();
-    hips.position.y = 0.94;
+    hips.position.y = 0.96;
     root.add(hips);
 
-    // ---- torso: chest wider than waist, with shoulders ----
-    const torso = new THREE.Mesh(geo('torso', () => new THREE.CylinderGeometry(0.205, 0.155, 0.52, 12, 1)), kitMat);
-    torso.scale.z = 0.72;
-    torso.position.y = 0.26;
+    // Pelvis / torso
+    const torso = new THREE.Mesh(
+      geo('torso_body', () => new THREE.CapsuleGeometry(0.18, 0.48, 8, 16)),
+      jerseyMat
+    );
+    torso.scale.set(1.1, 1.02, 0.77);
+    torso.position.y = 0.25;
     torso.castShadow = true;
     hips.add(torso);
 
-    const chest = new THREE.Mesh(geo('chest', () => new THREE.SphereGeometry(0.20, 12, 10)), kitMat);
-    chest.scale.set(1.05, 0.55, 0.75);
-    chest.position.y = 0.44;
+    const chest = new THREE.Mesh(geo('chest_body', () => new THREE.SphereGeometry(0.19, 18, 18)), jerseyMat);
+    chest.scale.set(1.25, 0.85, 0.8);
+    chest.position.y = 0.5;
+    chest.castShadow = true;
     hips.add(chest);
 
+    const waist = new THREE.Mesh(geo('waist_body', () => new THREE.CylinderGeometry(0.15, 0.16, 0.18, 12)), trimMat);
+    waist.position.y = 0.06;
+    waist.scale.z = 0.76;
+    hips.add(waist);
+
     [-1, 1].forEach((sd) => {
-      const sh = new THREE.Mesh(geo('shoulder', () => new THREE.SphereGeometry(0.085, 10, 8)), kitMat);
-      sh.position.set(sd * 0.20, 0.44, 0);
+      const sh = new THREE.Mesh(geo('shoulder_' + sd, () => new THREE.SphereGeometry(0.11, 12, 12)), jerseyMat);
+      sh.position.set(sd * 0.22, 0.44, 0.02);
+      sh.scale.set(1, 0.85, 1.1);
       sh.castShadow = true;
       hips.add(sh);
       if (!isUmp) {
-        const sleeve = new THREE.Mesh(geo('sleeve', () => new THREE.CylinderGeometry(0.082, 0.070, 0.17, 10)), kitMat);
-        sleeve.position.set(sd * 0.205, 0.34, 0);
+        const sleeve = new THREE.Mesh(geo('sleeve_' + sd, () => new THREE.CapsuleGeometry(0.06, 0.12, 4, 10)), jerseyMat);
+        sleeve.scale.set(1.05, 1, 1);
+        sleeve.position.set(sd * 0.23, 0.34, 0.0);
+        sleeve.rotation.z = sd * 0.16;
         hips.add(sleeve);
       }
     });
 
-    const collar = new THREE.Mesh(geo('collar', () => new THREE.CylinderGeometry(0.088, 0.10, 0.06, 10)), trimMat);
-    collar.position.y = 0.53;
-    hips.add(collar);
-    const belt = new THREE.Mesh(geo('belt', () => new THREE.CylinderGeometry(0.163, 0.163, 0.05, 12)), trimMat);
-    belt.scale.z = 0.74;
-    belt.position.y = 0.01;
-    hips.add(belt);
+    const neck = new THREE.Mesh(geo('neck', () => new THREE.CylinderGeometry(0.055, 0.065, 0.12, 10)), skinMat);
+    neck.position.y = 0.62;
+    hips.add(neck);
 
-    // ---- head: face, hair, ears, helmet or umpire hat ----
     const headGroup = new THREE.Group();
-    headGroup.position.y = 0.60;
+    headGroup.position.y = 0.8;
     hips.add(headGroup);
 
-    const neck = capsule('neck', 0.052, 0.058, 0.09, skinMat);
-    neck.position.y = 0.05;
-    headGroup.add(neck);
-
-    const skull = new THREE.Mesh(geo('skull', () => new THREE.SphereGeometry(0.115, 16, 14)), skinMat);
-    skull.scale.set(1, 1.12, 1.02);
-    skull.position.y = 0.185;
+    const skull = new THREE.Mesh(geo('skull', () => new THREE.SphereGeometry(0.12, 18, 18)), skinMat);
+    skull.scale.set(1.0, 1.12, 1.0);
+    skull.position.y = 0.18;
     skull.castShadow = true;
     headGroup.add(skull);
 
-    const jaw = new THREE.Mesh(geo('jaw', () => new THREE.SphereGeometry(0.082, 12, 10)), skinMat);
-    jaw.scale.set(0.95, 0.8, 0.95);
-    jaw.position.set(0, 0.135, 0.022);
+    const jaw = new THREE.Mesh(geo('jaw', () => new THREE.SphereGeometry(0.085, 16, 14)), skinMat);
+    jaw.scale.set(0.92, 0.86, 0.96);
+    jaw.position.set(0, 0.10, 0.025);
     headGroup.add(jaw);
 
-    // eyes with irises
     [-1, 1].forEach((sd) => {
-      const eye = new THREE.Mesh(geo('eye', () => new THREE.SphereGeometry(0.021, 10, 8)), eyeWhite);
-      eye.position.set(sd * 0.042, 0.196, 0.094);
+      const eye = new THREE.Mesh(geo('eye_' + sd, () => new THREE.SphereGeometry(0.022, 12, 10)), eyeWhite);
+      eye.position.set(sd * 0.044, 0.197, 0.101);
       headGroup.add(eye);
-      const iris = new THREE.Mesh(geo('iris', () => new THREE.SphereGeometry(0.011, 8, 6)), irisMat);
-      iris.position.set(sd * 0.042, 0.196, 0.112);
+
+      const iris = new THREE.Mesh(geo('iris_' + sd, () => new THREE.SphereGeometry(0.011, 10, 10)), irisMat);
+      iris.position.set(sd * 0.044, 0.197, 0.119);
       headGroup.add(iris);
-      const brow = new THREE.Mesh(geo('brow', () => new THREE.BoxGeometry(0.038, 0.009, 0.012)), hairMat);
-      brow.position.set(sd * 0.043, 0.222, 0.101);
+
+      const brow = new THREE.Mesh(geo('brow_' + sd, () => new THREE.BoxGeometry(0.04, 0.008, 0.012)), hairMat);
+      brow.position.set(sd * 0.043, 0.222, 0.103);
       headGroup.add(brow);
-      const ear = new THREE.Mesh(geo('ear', () => new THREE.SphereGeometry(0.024, 8, 6)), skinMat);
-      ear.scale.set(0.45, 1, 0.8);
-      ear.position.set(sd * 0.108, 0.183, 0.006);
+
+      const ear = new THREE.Mesh(geo('ear_' + sd, () => new THREE.SphereGeometry(0.022, 10, 8)), skinMat);
+      ear.scale.set(0.52, 1.12, 0.78);
+      ear.position.set(sd * 0.112, 0.18, 0.01);
       headGroup.add(ear);
     });
-    const nose = new THREE.Mesh(geo('nose', () => new THREE.ConeGeometry(0.019, 0.05, 6)), skinMat);
+
+    const nose = new THREE.Mesh(geo('nose', () => new THREE.ConeGeometry(0.02, 0.06, 10)), skinMat);
     nose.rotation.x = Math.PI / 2.1;
-    nose.position.set(0, 0.168, 0.108);
+    nose.position.set(0, 0.164, 0.116);
     headGroup.add(nose);
-    const mouth = new THREE.Mesh(geo('mouth', () => new THREE.BoxGeometry(0.042, 0.008, 0.01)), darkMat);
-    mouth.position.set(0, 0.132, 0.104);
+
+    const mouth = new THREE.Mesh(geo('mouth', () => new THREE.BoxGeometry(0.046, 0.008, 0.01)), darkMat);
+    mouth.position.set(0, 0.126, 0.108);
     headGroup.add(mouth);
-    const hair = new THREE.Mesh(geo('hair', () => new THREE.SphereGeometry(0.118, 14, 12, 0, Math.PI * 2, 0, Math.PI * 0.5)), hairMat);
-    hair.position.y = 0.19;
-    hair.rotation.x = -0.22;
+
+    const hair = new THREE.Mesh(geo('hair', () => new THREE.SphereGeometry(0.12, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.6)), hairMat);
+    hair.position.y = 0.23;
+    hair.rotation.x = -0.23;
     headGroup.add(hair);
 
     if (isUmp) {
-      const hatMat = mat('hat', () => new THREE.MeshStandardMaterial({ color: 0xf7f7f2, roughness: 0.88 }));
-      const crown = new THREE.Mesh(geo('hatCrown', () => new THREE.CylinderGeometry(0.104, 0.116, 0.09, 12)), hatMat);
+      const hatMat = mat('hat', () => new THREE.MeshStandardMaterial({ color: 0xf7f7f2, roughness: 0.82 }));
+      const crown = new THREE.Mesh(geo('hat_crown', () => new THREE.CylinderGeometry(0.108, 0.118, 0.09, 12)), hatMat);
       crown.position.y = 0.29;
       headGroup.add(crown);
-      const brim = new THREE.Mesh(geo('hatBrim', () => new THREE.CylinderGeometry(0.215, 0.215, 0.014, 18)), hatMat);
+      const brim = new THREE.Mesh(geo('hat_brim', () => new THREE.CylinderGeometry(0.21, 0.21, 0.015, 20)), hatMat);
       brim.position.y = 0.245;
       headGroup.add(brim);
     } else {
-      const helmet = new THREE.Mesh(geo('helmet', () => new THREE.SphereGeometry(0.132, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.6)), kitMat);
-      helmet.position.y = 0.205;
+      const helmet = new THREE.Mesh(
+        geo('helmet', () => new THREE.SphereGeometry(0.135, 18, 14, 0, Math.PI * 2, 0, Math.PI * 0.62)),
+        jerseyMat
+      );
+      helmet.position.y = 0.21;
       headGroup.add(helmet);
-      const peak = new THREE.Mesh(geo('peak', () => new THREE.BoxGeometry(0.23, 0.018, 0.115)), kitMat);
-      peak.position.set(0, 0.215, 0.135);
+
+      const peak = new THREE.Mesh(geo('peak', () => new THREE.BoxGeometry(0.24, 0.018, 0.12)), jerseyMat);
+      peak.position.set(0, 0.216, 0.136);
+      peak.rotation.x = -0.1;
       headGroup.add(peak);
+
       [-1, 1].forEach((sd) => {
-        const guard = new THREE.Mesh(geo('guard', () => new THREE.SphereGeometry(0.055, 10, 8)), kitMat);
-        guard.scale.set(0.62, 1, 1);
-        guard.position.set(sd * 0.105, 0.155, 0.012);
+        const guard = new THREE.Mesh(geo('guard_' + sd, () => new THREE.SphereGeometry(0.06, 10, 8)), jerseyMat);
+        guard.scale.set(0.6, 1.0, 1.0);
+        guard.position.set(sd * 0.11, 0.155, 0.016);
         headGroup.add(guard);
       });
-      // grille
+
       for (let i = -1; i <= 1; i++) {
-        const bar = new THREE.Mesh(geo('gbar', () => new THREE.BoxGeometry(0.011, 0.125, 0.011)), darkMat);
+        const bar = new THREE.Mesh(geo('grille_' + i, () => new THREE.BoxGeometry(0.012, 0.12, 0.012)), darkMat);
         bar.position.set(i * 0.05, 0.135, 0.128);
         headGroup.add(bar);
       }
-      [0.085, 0.155].forEach((yy) => {
-        const hb = new THREE.Mesh(geo('gbarH', () => new THREE.BoxGeometry(0.165, 0.011, 0.011)), darkMat);
+      [0.085, 0.155].forEach((yy) => { 
+        const hb = new THREE.Mesh(geo('grille_h_' + yy, () => new THREE.BoxGeometry(0.168, 0.012, 0.012)), darkMat);
         hb.position.set(0, yy, 0.128);
         headGroup.add(hb);
       });
     }
 
-    // ---- arms: upper arm, elbow, forearm, hand with fingers ----
     function arm(side) {
       const shoulder = new THREE.Group();
-      shoulder.position.set(side * 0.205, 0.44, 0);
+      shoulder.position.set(side * 0.23, 0.44, 0.0);
       hips.add(shoulder);
-      const upper = capsule('upperArm', 0.052, 0.044, 0.28, skinMat);
-      upper.position.y = -0.14;
+
+      const upper = capsule('upperArm_' + side, 0.056, 0.056, 0.3, skinMat);
+      upper.position.y = -0.15;
       shoulder.add(upper);
+
       const elbow = new THREE.Group();
-      elbow.position.y = -0.28;
+      elbow.position.y = -0.29;
       shoulder.add(elbow);
-      const fore = capsule('foreArm', 0.042, 0.034, 0.26, skinMat);
+
+      const fore = capsule('foreArm_' + side, 0.045, 0.045, 0.26, skinMat);
       fore.position.y = -0.13;
       elbow.add(fore);
+
       const handMat = (role === 'bat' || isKeeper) ? padMat : skinMat;
-      const hand = new THREE.Mesh(geo('hand', () => new THREE.BoxGeometry(0.072, 0.085, 0.055)), handMat);
-      hand.position.y = -0.30;
+      const hand = new THREE.Mesh(geo('hand_' + side, () => new THREE.BoxGeometry(0.075, 0.085, 0.058)), handMat);
+      hand.position.y = -0.31;
       elbow.add(hand);
+
       if (role === 'bat' || isKeeper) {
-        // glove fingers
         for (let i = -1; i <= 1; i++) {
-          const f = new THREE.Mesh(geo('finger', () => new THREE.BoxGeometry(0.018, 0.045, 0.02)), padMat);
-          f.position.set(i * 0.022, -0.355, 0.012);
+          const f = new THREE.Mesh(geo('finger_' + side + '_' + i, () => new THREE.BoxGeometry(0.016, 0.045, 0.02)), padMat);
+          f.position.set(i * 0.02, -0.353, 0.015);
           elbow.add(f);
         }
       }
+
       return { shoulder, elbow, glove: hand };
     }
+
     const armL = arm(-1);
     const armR = arm(1);
 
-    // ---- legs: thigh, knee, shin, ankle, shoe ----
     function leg(side) {
       const hip = new THREE.Group();
-      hip.position.set(side * 0.098, -0.03, 0);
+      hip.position.set(side * 0.1, -0.03, 0);
       hips.add(hip);
-      const thigh = capsule('thigh', 0.078, 0.058, 0.40, trouserMat);
-      thigh.position.y = -0.20;
+
+      const thigh = capsule('thigh_' + side, 0.082, 0.082, 0.42, trouserMat);
+      thigh.position.y = -0.19;
       hip.add(thigh);
+
       const knee = new THREE.Group();
-      knee.position.y = -0.40;
+      knee.position.y = -0.42;
       hip.add(knee);
-      const shin = capsule('shin', 0.052, 0.038, 0.40, trouserMat);
-      shin.position.y = -0.20;
+
+      const shin = capsule('shin_' + side, 0.056, 0.056, 0.4, trouserMat);
+      shin.position.y = -0.19;
       knee.add(shin);
+
       const ankle = new THREE.Group();
-      ankle.position.y = -0.40;
+      ankle.position.y = -0.4;
       knee.add(ankle);
-      const shoe = new THREE.Mesh(geo('shoe', () => new THREE.BoxGeometry(0.095, 0.055, 0.235)), darkMat);
-      shoe.position.set(0, -0.025, 0.05);
+
+      const shoe = new THREE.Mesh(geo('shoe_' + side, () => new THREE.BoxGeometry(0.11, 0.06, 0.24)), shoeMat);
+      shoe.position.set(0, -0.03, 0.045);
       ankle.add(shoe);
-      const sole = new THREE.Mesh(geo('sole', () => new THREE.BoxGeometry(0.10, 0.018, 0.24)), trimMat);
-      sole.position.set(0, -0.058, 0.05);
+
+      const sole = new THREE.Mesh(geo('sole_' + side, () => new THREE.BoxGeometry(0.12, 0.018, 0.25)), trimMat);
+      sole.position.set(0, -0.06, 0.045);
       ankle.add(sole);
+
       if (role === 'bat' || isKeeper) {
-        const pad = new THREE.Mesh(geo('pad', () => new THREE.BoxGeometry(0.135, 0.46, 0.075)), padMat);
-        pad.position.set(0, -0.22, 0.082);
+        const pad = new THREE.Mesh(geo('pad_' + side, () => new THREE.BoxGeometry(0.145, 0.46, 0.08)), padMat);
+        pad.position.set(0, -0.22, 0.08);
         knee.add(pad);
         [-0.16, -0.24, -0.32].forEach((yy) => {
-          const strap = new THREE.Mesh(geo('strap', () => new THREE.BoxGeometry(0.145, 0.016, 0.08)), trimMat);
+          const strap = new THREE.Mesh(geo('strap_' + side + '_' + yy, () => new THREE.BoxGeometry(0.15, 0.016, 0.08)), trimMat);
           strap.position.set(0, yy, 0.082);
           knee.add(strap);
         });
       }
+
       return { hip, knee, ankle, foot: shoe };
     }
+
     const legL = leg(-1);
     const legR = leg(1);
 
-    // ---- bat: handle, grip, shoulder, bevelled blade ----
     let bat = null;
     if (role === 'bat') {
       bat = new THREE.Group();
-      const handle = new THREE.Mesh(geo('bhandle', () => new THREE.CylinderGeometry(0.017, 0.017, 0.24, 8)), darkMat);
+      const handle = new THREE.Mesh(geo('bhandle', () => new THREE.CylinderGeometry(0.017, 0.017, 0.26, 8)), darkMat);
       handle.position.y = 0.12;
       bat.add(handle);
-      const grip = new THREE.Mesh(geo('bgrip', () => new THREE.CylinderGeometry(0.020, 0.020, 0.10, 8)), trimMat);
-      grip.position.y = 0.06;
+
+      const grip = new THREE.Mesh(geo('bgrip', () => new THREE.CylinderGeometry(0.02, 0.02, 0.10, 8)), trimMat);
+      grip.position.y = 0.055;
       bat.add(grip);
-      const blade = new THREE.Mesh(geo('blade', () => new THREE.BoxGeometry(0.088, 0.44, 0.038)), woodMat);
+
+      const blade = new THREE.Mesh(geo('blade', () => new THREE.BoxGeometry(0.09, 0.44, 0.038)), woodMat);
       blade.position.y = -0.22;
       blade.castShadow = true;
       bat.add(blade);
-      const toe = new THREE.Mesh(geo('btoe', () => new THREE.BoxGeometry(0.086, 0.05, 0.034)), woodMat);
+
+      const toe = new THREE.Mesh(geo('btoe', () => new THREE.BoxGeometry(0.088, 0.05, 0.038)), woodMat);
       toe.position.y = -0.44;
       bat.add(toe);
+
       bat.position.set(0.06, -0.34, 0.10);
       bat.rotation.x = -0.45;
       bat.rotation.z = 0.2;
@@ -362,7 +390,6 @@
       const type = (extra && extra.type) || 'drive';
       const foot = (extra && extra.foot) || 'neutral';
       const sp = SHOT_POSE[type] || SHOT_POSE.drive;
-      // 0-0.25 backlift, 0.25-0.62 downswing to contact, 0.62-1 follow-through
       const lift = k < 0.25 ? k / 0.25 : 1;
       const swing = k < 0.25 ? 0 : Math.sin(((k - 0.25) / 0.75) * Math.PI);
 
@@ -371,7 +398,6 @@
       out.armRX = -0.55 - lift * 0.55 + swing * sp.armR * 0.75;
       out.elbowR = 0.75 + lift * 0.45 + swing * sp.elbowR;
       out.armLX = -0.35 - lift * 0.25 + swing * sp.armL * 0.5;
-      // footwork: front foot to the pitch of the ball, back foot for the short ball
       const stepIn = foot === 'front' ? 1 : foot === 'back' ? -1 : (type === 'pull' || type === 'cut' ? -1 : 1);
       out.hipLX = -0.12 + swing * sp.hipL + stepIn * 0.10;
       out.hipRX = 0.10 + swing * sp.hipR - stepIn * 0.06;
@@ -379,7 +405,6 @@
       out.kneeR = 0.18 + (stepIn < 0 ? 0.12 : 0);
       out.rootY = -sp.crouch * 0.5;
       out.tilt = 0;
-      // bat stays on the swing plane rather than clipping the body
       if (person.userData.joints.bat) person.userData.joints.bat.rotation.z = 0.2 + swing * (type === 'sweep' ? 1.1 : 0.35);
     } else if (state === 'walk') {
       const sw = Math.sin(t * 6 + person.userData.phase);
@@ -404,8 +429,8 @@
       out.torsoX = 0.16;
       out.hipsY = 0.92 + Math.abs(sw) * 0.03;
     } else if (state === 'bowl') {
-      const k = (extra && extra.k != null) ? extra.k : 0;   // 0 = start of run-up, 1 = release
-      out.armRX = -0.4 - Math.sin(k * Math.PI) * 3.0;        // windmill
+      const k = (extra && extra.k != null) ? extra.k : 0;
+      out.armRX = -0.4 - Math.sin(k * Math.PI) * 3.0;
       out.armLX = 0.35;
       out.elbowR = Math.max(0, 0.9 - k * 1.4);
       out.torsoY = -0.15 + k * 0.55;
@@ -437,7 +462,7 @@
       out.armLX = -2.9; out.armRX = -2.9;
       out.rootY = b * 0.12;
       out.torsoX = -0.05;
-    } else { // idle
+    } else {
       out.torsoX = 0.03 + breathe;
       out.armLX = 0.05; out.armRX = 0.05;
     }
@@ -464,7 +489,6 @@
     j.legR.hip.rotation.x = p.hipRX;
     j.legL.knee.rotation.x = p.kneeL;
     j.legR.knee.rotation.x = p.kneeR;
-    // keep the sole flat: ankle counter-rotates the knee bend
     j.legL.ankle.rotation.x = -(p.hipLX + p.kneeL) * 0.55;
     j.legR.ankle.rotation.x = -(p.hipRX + p.kneeR) * 0.55;
     person.rotation.z = p.tilt;
@@ -530,7 +554,6 @@
     inner.position.y = 0.04;
     scene.add(inner);
 
-    // ---- pitch ----
     const pitch = new THREE.Mesh(
       new THREE.BoxGeometry(3.4, 0.08, 28),
       new THREE.MeshStandardMaterial({ color: 0x9a8459, roughness: 1.0 })
@@ -563,7 +586,6 @@
       scene.add(bails);
     });
 
-    // ---- stands ----
     const crowd = crowdTexture(THREE);
     [[70, 10, 0x101a24], [78, 16, 0x0c141d], [86, 22, 0x0a1119]].forEach(([r, h, col], i) => {
       const shell = new THREE.Mesh(
@@ -576,7 +598,6 @@
       scene.add(shell);
     });
 
-    // floodlights
     [[-52, -52], [52, -52], [-52, 52], [52, 52]].forEach(([x, z]) => {
       const pole = new THREE.Mesh(
         new THREE.CylinderGeometry(0.5, 0.7, 30, 8),
@@ -593,7 +614,6 @@
       scene.add(head);
     });
 
-    // ---- ball ----
     const ball = new THREE.Mesh(
       new THREE.SphereGeometry(0.105, 16, 12),
       new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35, metalness: 0.05 })
@@ -618,7 +638,6 @@
     landingRing.visible = false;
     scene.add(landingRing);
 
-    // ---- people ----
     const striker = makePerson(THREE, '#7fd1ae', 'bat', 1);
     const nonStriker = makePerson(THREE, '#7fd1ae', 'bat', 3);
     const bowler = makePerson(THREE, '#ffb4a2', 'bowl', 0);
@@ -634,7 +653,6 @@
       fielderPool.push(f);
     }
 
-    // two on-field umpires: bowler's end and square leg
     const umpireA = makePerson(THREE, '#f2f2ec', 'umpire', 0);
     const umpireB = makePerson(THREE, '#f2f2ec', 'umpire', 4);
     umpireA.position.set(-1.5, 0, -12.4);
@@ -643,7 +661,6 @@
     umpireB.rotation.y = -Math.PI / 2;
     scene.add(umpireA, umpireB);
 
-    // DRS ball-tracking path
     const reviewGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()]);
     const reviewLine = new THREE.Line(reviewGeo, new THREE.LineDashedMaterial({
       color: 0xff5252, dashSize: 0.35, gapSize: 0.25, transparent: true, opacity: 0.95
@@ -674,7 +691,6 @@
     }
     function clearReviewPath() { reviewLine.visible = false; reviewMark.visible = false; }
 
-    // bowling preview: dashed line to where the ball will pitch
     const PITCH_Y = { yorker: 9.5, full: 8.0, good: 6.2, short: 3.4 };
     const previewGeo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
     const previewLine = new THREE.Line(previewGeo, new THREE.LineDashedMaterial({
@@ -710,14 +726,13 @@
       const w = Math.max(1, r.width), h = Math.max(1, r.height);
       renderer.setSize(w, h, false);
       camera.aspect = w / h;
-      const wide = w / h < 0.75;         // portrait phone
+      const wide = w / h < 0.75;
       camera.fov = wide ? 62 : 50;
       camera.updateProjectionMatrix();
     }
 
     function setCameraMode(m, auto) { cam.mode = m; if (!auto) cam.auto = false; }
 
-    // manual quality override from the settings sheet
     function setQuality(level) {
       if (level === 'high') {
         quality = 2;
@@ -752,7 +767,7 @@
     }
 
     let lastPhase = null;
-    let swingStart = null;
+    let swing = null;
     let runUp = 0;
     let frames = 0, frameAcc = 0;
 
@@ -764,7 +779,6 @@
       if (state.phase === 'flight') runUp = Math.min(1, runUp + dt * 2.4);
       else if (state.phase === 'delivery' || state.phase === 'ready') runUp = Math.max(0, runUp - dt * 1.5);
 
-      // striker / non-striker
       const batTeam = state.teams[state.batTeam];
       const strikerP = batTeam.players.find((p) => p.id === state.strikerId) || {};
       const nsP = batTeam.players.find((p) => p.id === state.nonStrikerId) || {};
@@ -780,7 +794,6 @@
         else {
           const k = Math.min(1, elapsed / 520);
           animate(striker, 'swing', t, dt, { k: k, type: swing.type, foot: swing.foot });
-          // turn the body toward where the ball was hit
           striker.rotation.y = Math.PI + (swing.dir * 0.5) * Math.PI / 180;
         }
       } else {
@@ -788,13 +801,11 @@
       }
       animate(nonStriker, 'stance', t, dt);
 
-      // bowler run-up and release
       const bowlerZ = -16 + runUp * 5;
       placePerson(bowler, 0.6, bowlerZ, Math.PI, state.bowlerId === myPid);
       if (runUp > 0.02) animate(bowler, 'bowl', t, dt, { k: runUp });
       else animate(bowler, state.phase === 'inplay' ? 'idle' : 'stance', t, dt);
 
-      // fielders (keeper handled separately so it can wear pads)
       const fs = state.fielders || [];
       let poolIdx = 0;
       keeper.visible = false;
@@ -805,8 +816,6 @@
         else { person = fielderPool[poolIdx++]; if (!person) return; person.visible = true; }
         person.userData.joints.torso.material.color.set(sp.kit || (sp.keeper ? '#f0b429' : '#e8eef2'));
         placePerson(person, sp.x, sp.y, Math.PI, sp.ownerId && sp.ownerId === myPid);
-        // animation follows the fielder's actual speed, so a player standing in
-        // the field stands still instead of jogging on the spot
         const lx = person.userData.lastX;
         const ly = person.userData.lastY;
         let speed = 0;
@@ -820,7 +829,6 @@
       animate(umpireA, 'stance', t, dt);
       animate(umpireB, 'stance', t * 0.8, dt);
 
-      // ball
       const b = state.ball;
       if (b) {
         ball.visible = true; ballShadow.visible = true;
@@ -838,22 +846,14 @@
         ball.visible = false; ballShadow.visible = false; landingRing.visible = false;
       }
 
-      // camera — always keep batter, bowler, ball and fielders in frame
       const targetPos = cam.pos.clone();
       const targetLook = cam.look.clone();
       const live = state.phase === 'inplay';
       const bx = b ? b.x : 0, by = b ? b.y : 0, bz = b ? (b.z || 0) : 0;
-
-      // how far the ball is from the batsman drives how wide the shot is framed
       const ballDist = b ? Math.hypot(bx, by - 10) : 0;
 
       if (live && b && (cam.mode === 'broadcast' || cam.mode === 'action')) {
-        // action camera: frame the ball together with the two closest fielders,
-        // so the chase is always on screen even on a narrow portrait phone
-        const near = (fs || [])
-          .slice()
-          .sort((a, c) => Math.hypot(a.x - bx, a.y - by) - Math.hypot(c.x - bx, c.y - by))
-          .slice(0, 2);
+        const near = (fs || []).slice().sort((a, c) => Math.hypot(a.x - bx, a.y - by) - Math.hypot(c.x - bx, c.y - by)).slice(0, 2);
         const cx = (bx + near.reduce((sum, f) => sum + f.x, 0)) / (1 + near.length);
         const cy = (by + near.reduce((sum, f) => sum + f.y, 0)) / (1 + near.length);
         const spread = Math.max(8, ...near.map((f) => Math.hypot(f.x - bx, f.y - by)));
@@ -862,19 +862,15 @@
         targetPos.set(cx * 0.7, up, cy - back);
         targetLook.set(cx, 0.8, cy);
       } else if (cam.mode === 'batter') {
-        // over the striker's shoulder down the pitch; pulls back as the ball flies away
-        // offset to the off side so the striker sits clear of the shot buttons
         const back = 19 + Math.min(5, ballDist * 0.16);
         targetPos.set(0.5 + bx * 0.2, 6.4 + Math.min(2, ballDist * 0.08), back);
         targetLook.set(3.0 + bx * 0.35, 0.9, live ? Math.min(6, (10 + by) / 2) : -6);
       } else if (cam.mode === 'broadcast') {
-        // follows the ball so the batter, ball and chasing fielders stay in frame
         const back = clamp(30 + ballDist * 0.4, 30, 50);
         const up = clamp(19 + ballDist * 0.22, 19, 34);
         targetPos.set(bx * 0.45, up, -back);
         targetLook.set(bx * 0.5, 1.5, (10 + by) / 2 + 2);
       } else if (cam.mode === 'portrait') {
-        // tight on the striker: used for checking character detail
         const sx = striker.position.x, sz = striker.position.z;
         targetPos.set(sx + 0.55, 1.62, sz + 2.9);
         targetLook.set(sx, 1.15, sz);
@@ -882,8 +878,6 @@
         targetPos.set(0, 74, 0.1);
         targetLook.set(bx * 0.3, 0, by * 0.4);
       }
-      // smooth, frame-rate independent easing — fast enough that the ball never
-      // leaves the frame, slow enough that it never looks like a cut
       const rate = live ? 9 : state.phase === 'flight' ? 7 : 4.5;
       const k = 1 - Math.exp(-dt * rate);
       camera.position.lerp(targetPos, k);
@@ -893,7 +887,6 @@
 
       renderer.render(scene, camera);
 
-      // adaptive quality: if the phone is struggling, drop resolution then shadows
       frames++;
       frameAcc += dt;
       if (frames >= 90) {
@@ -908,7 +901,6 @@
       lastPhase = state.phase;
     }
 
-    let swing = null;
     function onShot(info) {
       swing = {
         start: performance.now(),
