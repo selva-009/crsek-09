@@ -52,7 +52,7 @@
     return {
       id: o.id, name: o.name, bot: !!o.bot, kit: o.kit || '#7fd1ae',
       r: 0, b: 0, fours: 0, sixes: 0, out: false, how: null,
-      bBalls: 0, bRuns: 0, bWkts: 0
+      bBalls: 0, bRuns: 0, bWkts: 0, bOvers: 0
     };
   }
 
@@ -96,6 +96,10 @@
       this.reviews = [1, 1];        // one DRS review per team per innings
       this.pendingReview = null;
       this.lastTracking = null;
+      this.partnerRuns = 0;
+      this.partnerBalls = 0;
+      this.paused = false;
+      this._pendingRes = null;
     }
 
     // ---------- helpers ----------
@@ -164,7 +168,9 @@
       const bt = this.bat();
       bt.score = { r: 0, w: 0, balls: 0, extras: 0 };
       bt.players.forEach((p) => { p.r = 0; p.b = 0; p.fours = 0; p.sixes = 0; p.out = false; p.how = null; });
-      this.bowlTeam().players.forEach((p) => { p.bBalls = 0; p.bRuns = 0; p.bWkts = 0; });
+      this.bowlTeam().players.forEach((p) => { p.bBalls = 0; p.bRuns = 0; p.bWkts = 0; p.bOvers = 0; });
+      this.partnerRuns = 0;
+      this.partnerBalls = 0;
       this.balls = 0;
       this.thisOver = [];
       this.freeHit = false;
@@ -182,16 +188,30 @@
       this.later(1000, () => this.deliverySetup());
     }
 
+    maxOversPerBowler() {
+      return Math.max(1, Math.ceil(this.overs * 0.4));   // e.g. 4 of 10, 2 of 5, 1 of 2
+    }
+
     pickBowler() {
       const bt = this.bowlTeam();
-      const humans = [];
-      bt.players.forEach((p, i) => { if (!p.bot) humans.push(i); });
+      const quota = this.maxOversPerBowler();
+      const underQuota = [];
+      const all = [];
+      bt.players.forEach((p, i) => {
+        all.push(i);
+        if ((p.bOvers || 0) < quota) underQuota.push(i);
+      });
+      const pool = underQuota.length ? underQuota : all;
+      const humans = pool.filter((i) => !bt.players[i].bot);
       let chosen;
       if (humans.length) {
-        const eligible = humans.filter((i) => i !== this.lastBowlerIdx);
-        chosen = eligible.length ? pick(eligible) : humans[0];
+        const notLast = humans.filter((i) => i !== this.lastBowlerIdx);
+        chosen = notLast.length ? pick(notLast) : humans[0];
+      } else if (pool.length) {
+        const notLast = pool.filter((i) => i !== this.lastBowlerIdx);
+        chosen = notLast.length ? pick(notLast) : pool[0];
       } else {
-        chosen = Math.floor(Math.random() * bt.players.length);
+        chosen = 0;
       }
       this.bowlerIdx = chosen;
     }
@@ -587,8 +607,12 @@
       if (runs === 6) s.sixes += 1;
       s.r += runs;
       bt.score.r += runs;
+      this.partnerRuns += runs;
+      this.partnerBalls += 1;
 
       if (wicket) {
+        this.partnerRuns = 0;
+        this.partnerBalls = 0;
         bt.score.w += 1;
         s.out = true;
         s.how = res.kind === 'caught' ? 'c ' + (res.fielder || 'fielder')
@@ -602,6 +626,7 @@
         kind: res.kind, runs, text: res.text || this.resultText(res, s), wicket,
         batter: s.name, bowler: b ? b.name : '', freeHit: false
       };
+      this._pendingRes = res;
       this.emit('result', this.lastResult);
       if (wicket || runs === 4 || runs === 6) this.emit('replay', { text: this.lastResult.text, kind: res.kind });
 
@@ -734,6 +759,8 @@
       if (this.balls % 6 === 0) {
         this.swapStrike();
         this.thisOver = [];
+        const done = this.bowler();
+        if (done) done.bOvers = (done.bOvers || 0) + 1;
         this.lastBowlerIdx = this.bowlerIdx;
         this.pickBowler();
         this.placeField();
@@ -806,6 +833,31 @@
       this.broadcast();
     }
 
+    pause() {
+      if (this.paused || this.phase === 'done') return;
+      this.paused = true;
+      this.clearTimers();
+      this.broadcast();
+    }
+
+    resume() {
+      if (!this.paused) return;
+      this.paused = false;
+      this.broadcast();
+      switch (this.phase) {
+        case 'delivery': this.deliverySetup(); break;
+        case 'flight': this.ballStart = Date.now(); this.tickDelivery(); break;
+        case 'inplay': this.tickBall(); break;
+        case 'result':
+          if (this._pendingRes) this.later(900, () => this.afterBall(this._pendingRes));
+          break;
+        case 'review':
+          if (this.pendingReview) this.later(4000, () => this.resolveReview(false, null));
+          break;
+        default: this.later(400, () => this.deliverySetup()); break;
+      }
+    }
+
     // ---------- snapshot ----------
     snapshot() {
       return {
@@ -829,6 +881,9 @@
         lastResult: this.lastResult, msg: this.msg, result: this.result,
         tossWinner: this.tossWinner, captainId: this.captainId, mom: this.mom,
         reviews: this.reviews.slice(),
+        paused: this.paused,
+        partnership: { runs: this.partnerRuns, balls: this.partnerBalls },
+        maxBowlerOvers: this.maxOversPerBowler(),
         pendingReview: this.pendingReview ? {
           batterId: this.pendingReview.batterId, batterName: this.pendingReview.batterName,
           team: this.pendingReview.team, tracking: this.pendingReview.tracking,

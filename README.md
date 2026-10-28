@@ -29,7 +29,15 @@ bots so a match always starts. Humans always bat before bots.
 | Fielding | Stick moves your fielder, magnitude is sprint. One contextual button changes with the situation (CATCH / DIVE / PICK UP / THROW / SPRINT), plus a fixed DIVE. |
 | Throwing | When you pick the ball up, **THROW · STRIKER'S END** / **NON-STRIKER'S END** goes for the run-out. |
 
-Top-right buttons: scorecard, quick chat, camera (broadcast / batter / top-down), and 3D ↔ 2D.
+Top-right buttons: scorecard, quick chat, pause, camera (broadcast / batter / top-down), and 3D ↔ 2D.
+
+**Settings** (from the home screen or the pause menu): joystick sensitivity, sound on/off, graphics
+quality (auto/high/low) and default camera. All persist in local storage.
+
+**Tutorial** — a five-step walkthrough on first run, replayable from the home screen.
+
+**Batting order** — in a private room the host reorders players within their team before the match
+starts, and that order becomes the batting order.
 
 ## What is implemented
 
@@ -126,6 +134,17 @@ cd crsek-09 && python3 -m http.server 8080
 ```
 
 ## Testing
+
+The suite lives in `test/` and runs without a browser for the engine, with headless Chromium for the
+rest:
+
+```bash
+cd test && npm install          # puppeteer-core only
+npm run test:engine             # rules, trajectory, DRS, bowler quota, partnership, pause
+npm run test:input              # joystick capture, deadzone, multi-touch isolation
+npm run test:match              # a full 3D match to the result screen
+npm run test:multiplayer        # two peers, room sync, disconnect, reconnect
+```
 
 The build is checked three ways before each deploy:
 

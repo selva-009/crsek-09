@@ -15,7 +15,8 @@
     selLength: 'good', selType: 'pace', selSpeed: 'normal', meterStart: 0, flightStart: 0,
     lastMoveSent: 0, view: null, view3d: null, use3d: true, camera: 'broadcast',
     kit: '#7fd1ae', stats: { m: 0, r: 0, w: 0, win: 0, best: 0 },
-    lastFrame: 0, socketReady: false
+    lastFrame: 0, socketReady: false,
+    settings: { sens: 1, sound: true, gfx: 'auto', cam: 'auto' }
   };
 
   function pid() {
@@ -27,10 +28,12 @@
   app.name = localStorage.getItem('crsek09_name') || '';
   app.kit = localStorage.getItem('crsek09_kit') || KITS[0];
   try { app.stats = Object.assign(app.stats, JSON.parse(localStorage.getItem('crsek09_stats') || '{}')); } catch (e) {}
+  try { app.settings = Object.assign(app.settings, JSON.parse(localStorage.getItem('crsek09_settings') || '{}')); } catch (e) {}
 
   // ---------- audio ----------
   let actx = null;
   function blip(freq, dur, type) {
+    if (!app.settings.sound) return;
     try {
       if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
       const o = actx.createOscillator(), g = actx.createGain();
@@ -113,6 +116,7 @@
     $('whoami').textContent = v;
     renderStats();
     show('home');
+    if (!localStorage.getItem('crsek09_seen_tutorial')) setTimeout(() => openTutorial(), 350);
   };
   $('nameInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('nameGo').click(); });
 
@@ -354,7 +358,10 @@
           '<span class="team-tag">' + (team === 0 ? 'A' : 'B') + '</span>' +
           (p ? '<span class="kit-dot" style="background:' + (p.kit || '#7fd1ae') + '"></span>' : '') +
           '<span>' + (p ? escapeHtml(p.name) : '<span style="color:#5d7a6b">Open slot</span>') + '</span>' +
-          '<span class="pill">' + (p ? (isMe ? 'you' : 'ready') : 'bot') + '</span></div>');
+          '<span class="pill">' + (p ? (isMe ? 'you' : 'bat ' + (Math.floor(idx / per) === 0 ? i + 1 : i + 1)) : 'bot') + '</span>' +
+          (app.isHost && p ? '<button class="mv" data-mv="-1" data-pid="' + p.pid + '">▲</button>' +
+            '<button class="mv" data-mv="1" data-pid="' + p.pid + '">▼</button>' : '') +
+          '</div>');
       }
     }
     $('roster').innerHTML = rows.join('');
@@ -362,6 +369,24 @@
       ' in the room. Empty slots become bots.';
     $('startBtn').style.display = app.isHost ? '' : 'none';
   }
+
+  // batting order: swap a player with the next slot in the same team
+  function movePlayer(pid, dir) {
+    const i = app.lobby.findIndex((p) => p.pid === pid);
+    if (i < 0) return;
+    const j = i + dir * 2;
+    if (j < 0 || j >= app.lobby.length) return;
+    const t = app.lobby[i];
+    app.lobby[i] = app.lobby[j];
+    app.lobby[j] = t;
+    renderRoster();
+    if (app.net) app.net.broadcast({ t: 'lobby', lobby: app.lobby });
+  }
+  $('roster').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-mv]');
+    if (!b || !app.isHost) return;
+    movePlayer(b.dataset.pid, parseInt(b.dataset.mv, 10));
+  });
 
   function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -522,6 +547,8 @@
       $('pitch3d').style.display = 'block';
       $('pitch').style.display = 'none';
       app.view3d.resize();
+      if (app.view3d.setQuality) app.view3d.setQuality(app.settings.gfx);
+      if (app.settings.cam !== 'auto') app.view3d.setCameraMode(app.settings.cam, false);
     } else {
       if (!app.view) app.view = View.makeView($('pitch'));
       $('pitch').style.display = 'block';
@@ -530,6 +557,73 @@
     }
     $('viewBtn').textContent = app.use3d ? '3D' : '2D';
   }
+
+  // ---------- pause ----------
+  function pauseMatch() {
+    if (!app.runner || !app.isHost) return;
+    app.runner.pause();
+    $('pauseSub').textContent = 'Take your time.';
+    $('resumeBtn').style.display = '';
+    $('pauseOverlay').classList.remove('hidden');
+  }
+  function resumeMatch() {
+    if (app.runner && app.isHost) app.runner.resume();
+    $('pauseOverlay').classList.add('hidden');
+  }
+  $('pauseBtn').onclick = () => {
+    if (!app.isHost) { toast('Only the host can pause a live match'); return; }
+    if (app.state && app.state.paused) resumeMatch(); else pauseMatch();
+  };
+  $('resumeBtn').onclick = resumeMatch;
+  $('pauseSettingsBtn').onclick = () => openSettings();
+  $('quitBtn').onclick = () => { resumeMatch(); $('homeBtn').click(); };
+
+  // ---------- settings ----------
+  function openSettings() {
+    $('setSens').value = Math.round(app.settings.sens * 100);
+    $('setSound').checked = !!app.settings.sound;
+    $('setGfx').value = app.settings.gfx;
+    $('setCam').value = app.settings.cam;
+    $('settings').classList.remove('hidden');
+  }
+  function saveSettings() { localStorage.setItem('crsek09_settings', JSON.stringify(app.settings)); }
+  function applyCameraSetting() {
+    if (!app.view3d) return;
+    if (app.settings.cam === 'auto') app.view3d.setAutoCamera(app.role);
+    else app.view3d.setCameraMode(app.settings.cam, false);
+  }
+  $('setSens').oninput = (e) => { app.settings.sens = (+e.target.value) / 100; saveSettings(); };
+  $('setSound').onchange = (e) => { app.settings.sound = e.target.checked; saveSettings(); };
+  $('setGfx').onchange = (e) => {
+    app.settings.gfx = e.target.value; saveSettings();
+    if (app.view3d && app.view3d.setQuality) app.view3d.setQuality(app.settings.gfx);
+  };
+  $('setCam').onchange = (e) => { app.settings.cam = e.target.value; saveSettings(); applyCameraSetting(); };
+  $('settingsClose').onclick = () => $('settings').classList.add('hidden');
+  $('settingsBtn').onclick = openSettings;
+
+  // ---------- tutorial ----------
+  const TUT = [
+    ['Aim with the stick', 'Hold the joystick bottom-left to aim. Push up for front foot, down for back foot. The wrong foot on a length costs you accuracy.'],
+    ['Pick your shot', 'Drive and Loft go straight, Pull goes leg side, Cut goes behind point, Sweep goes behind square, Defend is safe. Timing beats power.'],
+    ['Watch the timing bar', 'A bar appears as the ball comes. Tap your shot when the marker reaches the green zone.'],
+    ['Bowling', 'When it is your over the same stick sets line and length — up is a yorker, down is short. Pick type and speed, then stop the release meter in the green.'],
+    ['Fielding', 'You get one fielder. Move with the stick, sprint by pushing further. One big button changes with the situation: CATCH, DIVE, PICK UP, THROW.']
+  ];
+  let tutI = 0;
+  function renderTut() {
+    $('tutStep').textContent = 'STEP ' + (tutI + 1) + ' OF ' + TUT.length;
+    $('tutTitle').textContent = TUT[tutI][0];
+    $('tutText').textContent = TUT[tutI][1];
+  }
+  function openTutorial() { tutI = 0; renderTut(); $('tutorial').classList.remove('hidden'); }
+  function closeTutorial() {
+    $('tutorial').classList.add('hidden');
+    localStorage.setItem('crsek09_seen_tutorial', '1');
+  }
+  $('tutNext').onclick = () => { if (tutI < TUT.length - 1) { tutI++; renderTut(); } else closeTutorial(); };
+  $('tutSkip').onclick = closeTutorial;
+  $('tutorialBtn').onclick = openTutorial;
 
   $('viewBtn').onclick = () => {
     app.use3d = !app.use3d;
@@ -573,7 +667,10 @@
       $('tossSub').textContent = 'You won the toss. Bat or bowl?';
     } else $('tossOverlay').classList.add('hidden');
 
-    if (app.view3d) app.view3d.setAutoCamera(role);
+    if (app.view3d) {
+      if (app.settings.cam === 'auto') app.view3d.setAutoCamera(role);
+      else app.view3d.setCameraMode(app.settings.cam, false);
+    }
     if (role === 'bowl' && st.phase === 'delivery' && !app.meterStart) app.meterStart = performance.now();
     if (st.phase !== 'delivery') app.meterStart = 0;
 
@@ -584,6 +681,13 @@
       $('drsPill').textContent = 'DRS ' + st.reviews[myTeamIdx];
     } else $('drsPill').classList.add('hidden');
     if (st.phase !== 'review') $('reviewOverlay').classList.add('hidden');
+    if (st.paused && !app.isHost) {
+      $('pauseSub').textContent = 'The host paused the match.';
+      $('resumeBtn').style.display = 'none';
+      $('pauseOverlay').classList.remove('hidden');
+    } else if (!st.paused && !app.isHost) {
+      $('pauseOverlay').classList.add('hidden');
+    }
     updateBanner(role, st);
   }
 
@@ -629,6 +733,9 @@
     const dl = st.delivery;
     $('bowlerLine').textContent = (st.bowlerName || '—') +
       (dl && st.phase === 'delivery' ? ' · ' + dl.length + ' ' + dl.type : '');
+    if (st.partnership) {
+      $('partnershipLine').textContent = "P'ship " + st.partnership.runs + ' (' + st.partnership.balls + ')';
+    }
     $('overDots').innerHTML = (st.thisOver || []).map((d) =>
       '<span class="' + (d === 'W' ? 'w' : d === '4' || d === '6' ? 'b' : '') + '">' + d + '</span>').join('');
   }
@@ -763,12 +870,12 @@
 
   function stickDir() {
     if (!app.pad || !app.pad.mag) return 0;
-    return app.pad.dir();
+    return clamp(Math.round(Math.atan2(sx(), -sy()) * 180 / Math.PI), -180, 180);
   }
 
   function doRelease() {
     sendIntent('delivery', {
-      line: clamp(app.pad.x, -1, 1),
+      line: sx(),
       length: stickLength(),
       type: app.selType,
       release: meterValue()
@@ -811,15 +918,19 @@
     }
   }
 
+  // joystick sensitivity setting scales the raw stick vector
+  function sx() { return clamp(app.pad.x * app.settings.sens, -1, 1); }
+  function sy() { return clamp(app.pad.y * app.settings.sens, -1, 1); }
+
   function stickFoot() {
-    const y = app.pad.y;
+    const y = sy();
     if (y < -0.4) return 'front';
     if (y > 0.4) return 'back';
     return 'neutral';
   }
 
   function stickLength() {
-    const y = app.pad.y;
+    const y = sy();
     if (y < -0.6) return 'yorker';
     if (y < -0.15) return 'full';
     if (y > 0.45) return 'short';
@@ -881,14 +992,14 @@
       if (now - app.lastMoveSent > 55) {
         app.lastMoveSent = now;
         const speed = 0.32 + 0.5 * app.pad.mag;
-        sendIntent('move', { x: app.pad.x * speed, y: app.pad.y * speed });
+        sendIntent('move', { x: sx() * speed, y: sy() * speed });
       }
     }
 
     // bowling: live trajectory preview before release
     if (app.view3d) {
       if (app.role === 'bowl' && st.phase === 'delivery' && app.view3d.setPreview) {
-        app.view3d.setPreview({ line: clamp(app.pad.x, -1, 1), length: stickLength() });
+        app.view3d.setPreview({ line: sx(), length: stickLength() });
       } else if (app.view3d.clearPreview) {
         app.view3d.clearPreview();
       }
@@ -968,7 +1079,7 @@
   renderKits();
   renderStats();
   if (app.name) { $('whoami').textContent = app.name; show('home'); }
-  if (!localStorage.getItem('crsek09_seen_help') && app.name) $('help').classList.remove('hidden');
+  if (!localStorage.getItem('crsek09_seen_tutorial') && app.name) setTimeout(() => openTutorial(), 400);
 
   const params = new URLSearchParams(location.search);
   const deep = params.get('room');

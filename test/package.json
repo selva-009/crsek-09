@@ -1,0 +1,12 @@
+{
+  "name": "crsek-09-tests",
+  "private": true,
+  "description": "Engine unit tests and browser regression tests for Crsek-09",
+  "scripts": {
+    "test:engine": "node rules2.js && node drstest.js && node throwtest.js && node stage2test.js",
+    "test:input": "node inputtest.js && node btntest3.js",
+    "test:match": "node test5.js",
+    "test:multiplayer": "node test8.js"
+  },
+  "devDependencies": { "puppeteer-core": "^24.0.0" }
+}

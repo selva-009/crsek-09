@@ -605,6 +605,24 @@
     }
 
     function setCameraMode(m, auto) { cam.mode = m; if (!auto) cam.auto = false; }
+
+    // manual quality override from the settings sheet
+    function setQuality(level) {
+      if (level === 'high') {
+        quality = 2;
+        renderer.setPixelRatio(Math.min(2, global.devicePixelRatio || 1));
+        renderer.shadowMap.enabled = true; sun.castShadow = true;
+      } else if (level === 'low') {
+        quality = 0;
+        renderer.setPixelRatio(1);
+        renderer.shadowMap.enabled = false; sun.castShadow = false;
+      } else {
+        quality = hiEnd ? 2 : 1;
+        renderer.setPixelRatio(Math.min(hiEnd ? 2 : 1.5, global.devicePixelRatio || 1));
+        renderer.shadowMap.enabled = hiEnd; sun.castShadow = hiEnd;
+      }
+      resize();
+    }
     function setAutoCamera(role) {
       if (!cam.auto) return;
       const want = (role === 'bat' || role === 'nonstriker' || role === 'waitbat') ? 'batter' : 'broadcast';
@@ -763,7 +781,7 @@
 
     function onShot() { swingStart = performance.now(); setTimeout(() => { swingStart = null; }, 420); }
 
-    return { renderer, scene, camera, resize, render, setCameraMode, setAutoCamera, cameraMode, setPreview, clearPreview, setReviewPath, clearReviewPath, onShot, dispose() { renderer.dispose(); } };
+    return { renderer, scene, camera, resize, render, setCameraMode, setAutoCamera, cameraMode, setPreview, clearPreview, setReviewPath, clearReviewPath, setQuality, onShot, dispose() { renderer.dispose(); } };
   }
 
   global.View3D = { create };

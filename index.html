@@ -54,6 +54,10 @@
         <button class="btn" id="joinBtn">Join Room</button>
       </div>
       <button class="btn ghost wide" id="practiceBtn">Practice vs AI <small>solo, offline</small></button>
+      <div class="split">
+        <button class="btn" id="tutorialBtn">Tutorial</button>
+        <button class="btn" id="settingsBtn">Settings</button>
+      </div>
       <div class="row-label">Your kit</div>
       <div class="kit-row" id="kitRow"></div>
     </div>
@@ -111,6 +115,7 @@
         <span class="dot">•</span>
         <span id="bowlerLine">—</span>
       </div>
+      <div class="partnership" id="partnershipLine">P'ship 0 (0)</div>
     </div>
 
     <div class="role-banner" id="roleBanner">Waiting…</div>
@@ -132,6 +137,7 @@
     <div class="match-actions">
       <button class="icon-btn" id="scorecardBtn">☰</button>
       <button class="icon-btn" id="chatBtn">💬</button>
+      <button class="icon-btn" id="pauseBtn" title="Pause">❚❚</button>
       <button class="icon-btn" id="camBtn" title="Camera">◎</button>
       <button class="icon-btn view-btn" id="viewBtn" title="3D / 2D">3D</button>
     </div>
@@ -139,6 +145,16 @@
     <div class="throw-row hidden" id="throwRow">
       <button class="gbtn hot" data-end="striker">THROW · STRIKER'S END</button>
       <button class="gbtn hot" data-end="nonstriker">THROW · NON-STRIKER'S END</button>
+    </div>
+
+    <div class="pause-overlay hidden" id="pauseOverlay">
+      <div class="card center-card">
+        <h2>Paused</h2>
+        <p class="fine" id="pauseSub">Take your time.</p>
+        <button class="btn primary wide" id="resumeBtn">Resume</button>
+        <button class="btn wide" id="pauseSettingsBtn">Settings</button>
+        <button class="btn ghost wide" id="quitBtn">Quit match</button>
+      </div>
     </div>
 
     <div class="review-overlay hidden" id="reviewOverlay">
@@ -180,6 +196,31 @@
       <div class="chat-grid" id="chatGrid"></div>
     </div>
   </div>
+  <div class="sheet hidden" id="settings">
+    <div class="sheet-inner">
+      <h3>Settings</h3>
+      <label class="set-row"><span>Joystick sensitivity</span><input type="range" id="setSens" min="60" max="160" step="10" value="100"></label>
+      <label class="set-row"><span>Sound</span><input type="checkbox" id="setSound" checked></label>
+      <label class="set-row"><span>Graphics</span>
+        <select id="setGfx"><option value="auto">Auto</option><option value="high">High</option><option value="low">Low</option></select>
+      </label>
+      <label class="set-row"><span>Camera</span>
+        <select id="setCam"><option value="auto">Follow my role</option><option value="batter">Batting</option><option value="broadcast">Broadcast</option><option value="top">Top-down</option></select>
+      </label>
+      <button class="btn wide" id="settingsClose">Done</button>
+    </div>
+  </div>
+
+  <div class="review-overlay hidden" id="tutorial">
+    <div class="card center-card">
+      <div class="rev-tag" id="tutStep">STEP 1 OF 5</div>
+      <h2 id="tutTitle">Aim with the stick</h2>
+      <p class="fine" id="tutText">Hold the joystick to aim your shot. Push up for front foot, down for back foot.</p>
+      <button class="btn primary wide" id="tutNext">Next</button>
+      <button class="btn ghost wide" id="tutSkip">Skip</button>
+    </div>
+  </div>
+
   <div class="sheet hidden" id="help">
     <div class="sheet-inner">
       <h3>How Crsek-09 works</h3>
