@@ -478,7 +478,11 @@
   // ---------- match events ----------
   function handleEvent(type, p) {
     if (type === 'delivery') { app.flightStart = performance.now(); blip(420, 0.08, 'triangle'); }
-    else if (type === 'shot') { blip(180, 0.09, 'square'); if (app.view3d) app.view3d.onShot(); }
+    else if (type === 'shot') {
+      blip(180, 0.09, 'square');
+      const sh = (p && p.shot) || {};
+      if (app.view3d) app.view3d.onShot({ type: sh.type, dir: sh.dir, foot: sh.foot });
+    }
     else if (type === 'throw') { blip(260, 0.07, 'square'); toast(p.hit ? 'Direct hit!' : 'Throw comes in'); }
     else if (type === 'result') {
       flash(p.text);

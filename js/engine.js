@@ -28,12 +28,12 @@
 
   // bias = the side each shot naturally goes (positive = off side, negative = leg side)
   const SHOTS = {
-    drive: { power: 0.85, air: 0.05, risk: 0.03, bias: 12, label: 'Drive' },
-    loft: { power: 1.18, air: 0.95, risk: 0.17, bias: 0, label: 'Loft' },
-    pull: { power: 1.02, air: 0.30, risk: 0.10, bias: -65, label: 'Pull' },
-    cut: { power: 0.92, air: 0.14, risk: 0.09, bias: 105, label: 'Cut' },
-    sweep: { power: 0.88, air: 0.18, risk: 0.08, bias: -122, label: 'Sweep' },
-    defend: { power: 0.30, air: 0, risk: 0.01, bias: 0, label: 'Defend' }
+    drive: { power: 0.95, air: 0.05, risk: 0.03, bias: 12, elev: 8, sweetZ: 0.75, label: 'Drive' },
+    loft: { power: 1.25, air: 0.95, risk: 0.17, bias: 0, elev: 27, sweetZ: 0.85, label: 'Loft' },
+    pull: { power: 1.02, air: 0.30, risk: 0.10, bias: -65, elev: 14, sweetZ: 1.15, label: 'Pull' },
+    cut: { power: 0.92, air: 0.14, risk: 0.09, bias: 105, elev: 10, sweetZ: 1.0, label: 'Cut' },
+    sweep: { power: 0.88, air: 0.18, risk: 0.08, bias: -122, elev: 11, sweetZ: 0.45, label: 'Sweep' },
+    defend: { power: 0.30, air: 0, risk: 0.01, bias: 0, elev: 2, sweetZ: 0.8, label: 'Defend' }
   };
 
   // delivery model: how long the ball takes, where it pitches, how high it bounces
@@ -394,80 +394,124 @@
       const d = this.pendingDelivery;
       const q = shot.quality;
       const def = SHOTS[shot.type];
-      const power = def.power * (0.35 + 0.65 * q) * (0.85 + 0.3 * (d ? d.accuracy : 0.6));
-      const dist = 12 + power * 58;
       const aim = clamp(shot.dir, -38, 38);
       const finalDir = clamp(def.bias + aim, -180, 180);
+
+      // contact quality: timing, plus how close the bat met the ball to the
+      // height this shot wants (a sweep meets a low ball, a pull a short one)
+      const ballZ = this.ball ? this.ball.z : 0.6;
+      const sweet = clamp(1 - Math.abs(ballZ - (def.sweetZ || 0.6)) / 0.85, 0, 1);
+      const power = clamp(def.power * (0.25 + 0.55 * q) * (0.6 + 0.4 * sweet) * (0.8 + 0.2 * (d ? d.accuracy : 0.6)), 0, 1);
+
+      // launch: speed, elevation and direction from the shot and the contact
+      const speed = 7 + power * 24;                       // m/s off the bat (max ~31)
+      const elevDeg = def.elev + (def.air > 0.5 ? 6 * q : 0) + (1 - q) * 4;
+      const elev = (elevDeg * Math.PI) / 180;
       const rad = (finalDir * Math.PI) / 180;
-      const landing = {
-        x: BATSMAN_POS.x + Math.sin(rad) * dist,
-        y: BATSMAN_POS.y - Math.cos(rad) * dist
-      };
-      const airborne = def.air > 0.5 || (def.air > 0.2 && q > 0.8 && Math.random() < 0.5);
+
+      const mishit = q < 0.2;
       this.ball = {
-        from: 'bat', x: BATSMAN_POS.x, y: BATSMAN_POS.y, z: 1.2,
-        start: Date.now(), duration: clamp(dist / 45, 0.55, 1.3),
-        landing, airborne, power, quality: q, shotType: shot.type, stopped: false,
-        extraRuns: 0
+        x: 0, y: BATSMAN_POS.y, z: Math.max(0.25, ballZ),
+        vx: Math.sin(rad) * Math.cos(elev) * speed,
+        vy: -Math.cos(rad) * Math.cos(elev) * speed,
+        vz: Math.sin(elev) * speed,
+        bounces: 0, stopped: false, heldBy: null,
+        last: Date.now(), born: Date.now(),
+        quality: q, shotType: shot.type, dir: finalDir, power: power,
+        sweet: +sweet.toFixed(2), airborne: elev > 0.18
       };
-      if (q < 0.18) {
+
+      if (mishit) {
+        // a mishit comes off the edge, not the middle
+        this.ball.vx *= 0.45; this.ball.vy *= 0.35; this.ball.vz *= 0.5;
         this.ball.edge = true;
-        this.ball.landing = { x: rand(-4, 4), y: BATSMAN_POS.y + rand(4, 12) };
-        this.ball.duration = 0.7;
+        this.ball.dir = finalDir + (Math.random() < 0.5 ? -70 : 70);
       }
-      this.emit('shot', { strikerId: this.striker().id, shot: { type: shot.type, dir: finalDir, quality: q }, ball: this.ball });
+
+      this.emit('shot', {
+        strikerId: this.striker().id,
+        shot: { type: shot.type, dir: finalDir, quality: q, foot: shot.foot || 'neutral', sweet: sweet },
+        ball: { x: this.ball.x, y: this.ball.y, z: this.ball.z, dir: this.ball.dir, power: power }
+      });
       this.broadcast();
       this.tickBall();
     }
 
+    // velocity integration: gravity, bounce restitution, rolling friction
     tickBall() {
       if (this.phase !== 'inplay' || !this.ball) return;
       const b = this.ball;
       const now = Date.now();
-      const p = clamp((now - b.start) / (b.duration * 1000), 0, 1);
-      b.x = BATSMAN_POS.x + (b.landing.x - BATSMAN_POS.x) * p;
-      b.y = BATSMAN_POS.y + (b.landing.y - BATSMAN_POS.y) * p;
-      if (b.airborne) {
-        const landAt = 0.82;
-        if (p < landAt) b.z = 1.2 + Math.sin((p / landAt) * Math.PI) * (5 + b.power * 13);
-        else b.z = Math.abs(Math.sin(((p - landAt) / (1 - landAt)) * Math.PI)) * 1.2 * (1 - p) + 0.08;
-      } else {
-        b.z = Math.abs(Math.sin(p * Math.PI * 2.2)) * 1.05 * (1 - p * 0.8) + 0.07;
+      let dt = (now - b.last) / 1000;
+      b.last = now;
+      if (!isFinite(dt) || dt <= 0) dt = 0.05;
+      dt = Math.min(dt, 0.12);
+
+      const G = 9.81, R = 0.036;
+      const steps = Math.max(1, Math.ceil(dt / 0.008));
+      const h = dt / steps;
+
+      for (let i = 0; i < steps && !b.stopped; i++) {
+        b.x += b.vx * h;
+        b.y += b.vy * h;
+        b.z += b.vz * h;
+        b.vz -= G * h;
+
+        if (b.z <= R) {
+          b.z = R;
+          const impact = Math.abs(b.vz);
+          if (b.bounces < 8 && impact > 0.9) {
+            b.vz = impact * 0.42;                 // restitution
+            b.vx *= 0.72; b.vy *= 0.72;           // surface friction
+            b.bounces += 1;
+            b.airborne = false;
+          } else {
+            b.vz = 0;
+            const sp = Math.hypot(b.vx, b.vy);
+            if (sp > 0.35) {
+              const decel = 5.5 * h;              // rolling friction
+              b.vx -= (b.vx / sp) * decel;
+              b.vy -= (b.vy / sp) * decel;
+            } else {
+              b.vx = 0; b.vy = 0; b.stopped = true;
+            }
+          }
+        }
+        b.airborne = b.z > 0.6;
       }
 
-      // AI fielders chase the ball
+      // fielders close in on the ball
       this.fielders.forEach((f) => {
         if (f.ownerId) return;
         const dx = b.x - f.x, dy = b.y - f.y;
         const dd = Math.hypot(dx, dy);
         if (dd > 0.4) {
-          const step = (f.keeper ? 7.5 : 6.8) * 0.05;
+          const step = (f.keeper ? 7.5 : 6.8) * dt;
           f.x += (dx / dd) * Math.min(step, dd);
           f.y += (dy / dd) * Math.min(step, dd);
         }
       });
 
-      // catch check
-      if (b.airborne && !b.caught && !b.heldBy) {
+      // catch: in the air and a fielder under it
+      if (b.airborne && !b.stopped) {
         for (const f of this.fielders) {
           const dd = Math.hypot(b.x - f.x, b.y - f.y);
           const reach = f.catchReach || 2.6;
-          if (dd < reach) {
+          if (dd < reach && b.z < 3.2) {
             const human = !f.bot;
-            const success = human ? (f.catchPressed ? 0.94 : 0.0) : (0.5 + Math.min(0.32, (reach - dd) * 0.22));
-            if (success > 0.4 && Math.random() < success) {
-              b.caught = true;
+            const chance = human ? (f.catchPressed ? 0.94 : 0) : (0.5 + Math.min(0.32, (reach - dd) * 0.22));
+            if (chance > 0.4 && Math.random() < chance) {
               return this.finishBall({ kind: 'caught', runs: 0, fielder: f.name });
             }
           }
         }
       }
-      // ground interception — remember who picked it up (they may throw it in)
+      // ground: whoever gets there first picks it up
       if (!b.airborne && !b.stopped) {
         for (const f of this.fielders) {
           const dd = Math.hypot(b.x - f.x, b.y - f.y);
           if (dd < (f.diveUntil > now ? 3.6 : 1.8)) {
-            b.stopped = true;
+            b.stopped = true; b.vx = 0; b.vy = 0;
             b.stoppedAt = { x: b.x, y: b.y };
             b.heldBy = f.ownerId || 'ai';
             b.heldByName = f.name;
@@ -475,34 +519,29 @@
           }
         }
       }
+
       // boundary
       if (Math.hypot(b.x, b.y) > BOUNDARY) {
-        return this.finishBall({ kind: b.airborne ? 'six' : 'four', runs: b.airborne ? 6 : 4 });
+        return this.finishBall({ kind: b.bounces === 0 ? 'six' : 'four', runs: b.bounces === 0 ? 6 : 4 });
       }
-      if (b.edge && p >= 1 && !b.edgeDone) {
-        b.edgeDone = true;
-        const keeper = this.fielders.find((f) => f.keeper);
-        const kd = keeper ? Math.hypot(b.x - keeper.x, b.y - keeper.y) : 99;
-        if (kd < 4 && Math.random() < 0.5) return this.finishBall({ kind: 'caught', runs: 0, fielder: 'Keeper' });
-        return this.finishBall({ kind: 'dot', runs: 0, text: 'Edged, no run' });
-      }
-      if ((b.stopped || p >= 1) && !b.edge) {
+
+      const age = (Date.now() - b.born) / 1000;
+      if (b.stopped || age > 7) {
         if (!b.stopped) { b.stopped = true; b.stoppedAt = { x: b.x, y: b.y }; b.heldBy = 'ai'; }
-        // a human fielder gets a window to throw the stumps down
-        const humanHold = b.heldBy && b.heldBy !== 'ai';
-        const settleFor = humanHold ? 1500 : 600;
-        if (!b.settleAt) { b.settleAt = now + settleFor; this.broadcast(); }
-        else if (now >= b.settleAt) return this.rollOut(b.stoppedAt || { x: b.x, y: b.y });
+        if (!b.settleAt) { b.settleAt = Date.now() + (b.heldBy !== 'ai' ? 1500 : 600); this.broadcast(); }
+        else if (Date.now() >= b.settleAt) return this.rollOut(b.stoppedAt);
       }
+
       this.broadcast();
-      this.later(50, () => this.tickBall());
+      this.later(40, () => this.tickBall());
     }
 
     rollOut(pos) {
-      const d = Math.hypot(pos.x, pos.y);
-      let runs = d < 20 ? 0 : d < 32 ? 1 : d < 46 ? 2 : 3;
+      const p = pos || { x: this.ball.x, y: this.ball.y };
+      const d = Math.hypot(p.x, p.y);
+      let runs = d < 16 ? 0 : d < 26 ? 1 : d < 38 ? 2 : 3;
       runs += this.ball.extraRuns || 0;
-      if (this.ball.quality > 0.9 && runs < 3 && Math.random() < 0.35) runs += 1;
+      if (this.ball.quality > 0.9 && runs < 3 && Math.random() < 0.3) runs += 1;
       if (runs >= 3 && Math.random() < 0.14) return this.finishBall({ kind: 'runout', runs: 0 });
       return this.finishBall({ kind: 'runs', runs: runs });
     }

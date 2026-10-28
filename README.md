@@ -47,7 +47,13 @@ caught, LBW, run out, stumped; strike rotation on odd runs and at over end; batt
 next-man-in; innings break and target; chase, tie and win; per-batter and per-bowler scorecard;
 player of the match.
 
-**Ball physics** — the delivery is simulated, not faked: the ball leaves the hand at 2.2 m, pitches
+**Shot physics** — the ball leaves the bat with a real velocity vector: speed from contact quality,
+elevation from the shot type (a drive leaves at 8°, a loft at 27°), direction from the shot's bias
+plus your aim. From there it is integrated frame-rate independently with gravity, bounce restitution
+(0.42) and rolling friction, so a perfect loft clears the 66 m rope at 66 m while a defensive push
+dies 4 m away and a pull lands at 61 m for three. Only a clean hit goes for six.
+
+**Delivery physics** — the delivery is simulated, not faked: the ball leaves the hand at 2.2 m, pitches
 at a point set by the length (a yorker lands at 9.5 m, a bouncer at 3.4 m), bounces to a height the
 length dictates (0.28 m for a yorker, 1.7 m for a short ball), and moves laterally through the air
 with swing and off the pitch with spin. Whether you are bowled or trapped LBW comes from where the
@@ -148,6 +154,9 @@ npm run test:multiplayer        # two peers, room sync, disconnect, reconnect
 
 The build is checked three ways before each deploy:
 
+- `test/physics.js` — launch and flight: each shot leaves at its own angle (drive 12°, pull −65°,
+  cut 105°, sweep −122°), a loft is the only shot that clears the rope, a drive lands at 32 m, a
+  defensive push at 4 m, a mistimed edge at 5 m, and no trajectory produces NaN.
 - `test/drstest.js` — DRS: the window opens on an LBW and blocks play, a missing ball overturns the
   wicket and returns the batter, a hitting ball is upheld and costs the review, umpire's call keeps
   both the wicket and the review, the fielding side cannot review, a team with no reviews left

@@ -255,6 +255,16 @@
     return root;
   }
 
+  // Each shot has its own footwork, hip/shoulder rotation and bat arc.
+  const SHOT_POSE = {
+    drive:  { torsoY: 0.95, armR: -2.45, elbowR: 0.15, armL: -1.00, hipL: 0.38, hipR: -0.22, kneeL: 0.38, step: 0.32, crouch: 0 },
+    loft:   { torsoY: 0.60, armR: -3.00, elbowR: 0.00, armL: -1.65, hipL: 0.52, hipR: -0.30, kneeL: 0.52, step: 0.44, crouch: 0 },
+    pull:   { torsoY: 1.35, armR: -1.90, elbowR: 0.40, armL: -1.30, hipL: -0.42, hipR: 0.30, kneeL: 0.22, step: -0.26, crouch: 0.05 },
+    cut:    { torsoY: 1.10, armR: -1.70, elbowR: 0.50, armL: -1.50, hipL: -0.50, hipR: 0.34, kneeL: 0.26, step: -0.30, crouch: 0.05 },
+    sweep:  { torsoY: 1.55, armR: -1.45, elbowR: 0.60, armL: -1.40, hipL: 0.10, hipR: -0.62, kneeL: 0.95, step: 0.28, crouch: 0.30 },
+    defend: { torsoY: 0.22, armR: -1.00, elbowR: 0.50, armL: -0.60, hipL: 0.22, hipR: -0.10, kneeL: 0.26, step: 0.18, crouch: 0.06 }
+  };
+
   // target pose for a given animation state
   function targetPose(state, t, person, extra) {
     const p = person.userData.pose;
@@ -278,15 +288,28 @@
       out.torsoY = -0.22;
     } else if (state === 'swing') {
       const k = Math.min(1, (extra && extra.k != null) ? extra.k : 0);
-      const lift = k < 0.22 ? k / 0.22 : 1;                 // backlift first
-      const swing = k < 0.22 ? 0 : Math.sin(((k - 0.22) / 0.78) * Math.PI);
-      out.torsoY = -0.22 + swing * 0.85;
-      out.torsoX = 0.10 + swing * 0.10;
-      out.armRX = -0.55 - lift * 0.55 - swing * 1.9;
-      out.elbowR = 0.75 + lift * 0.5 - swing * 0.55;
-      out.armLX = -0.35 - lift * 0.3 - swing * 0.7;
-      out.hipLX = -0.12; out.hipRX = 0.10;
-      out.kneeL = 0.18 + swing * 0.15;
+      const type = (extra && extra.type) || 'drive';
+      const foot = (extra && extra.foot) || 'neutral';
+      const sp = SHOT_POSE[type] || SHOT_POSE.drive;
+      // 0-0.25 backlift, 0.25-0.62 downswing to contact, 0.62-1 follow-through
+      const lift = k < 0.25 ? k / 0.25 : 1;
+      const swing = k < 0.25 ? 0 : Math.sin(((k - 0.25) / 0.75) * Math.PI);
+
+      out.torsoY = -0.22 + lift * 0.15 + swing * sp.torsoY;
+      out.torsoX = 0.10 + swing * 0.12 + sp.crouch;
+      out.armRX = -0.55 - lift * 0.55 + swing * sp.armR * 0.75;
+      out.elbowR = 0.75 + lift * 0.45 + swing * sp.elbowR;
+      out.armLX = -0.35 - lift * 0.25 + swing * sp.armL * 0.5;
+      // footwork: front foot to the pitch of the ball, back foot for the short ball
+      const stepIn = foot === 'front' ? 1 : foot === 'back' ? -1 : (type === 'pull' || type === 'cut' ? -1 : 1);
+      out.hipLX = -0.12 + swing * sp.hipL + stepIn * 0.10;
+      out.hipRX = 0.10 + swing * sp.hipR - stepIn * 0.06;
+      out.kneeL = 0.18 + swing * sp.kneeL + (stepIn > 0 ? 0.12 : 0);
+      out.kneeR = 0.18 + (stepIn < 0 ? 0.12 : 0);
+      out.rootY = -sp.crouch * 0.5;
+      out.tilt = 0;
+      // bat stays on the swing plane rather than clipping the body
+      if (person.userData.joints.bat) person.userData.joints.bat.rotation.z = 0.2 + swing * (type === 'sweep' ? 1.1 : 0.35);
     } else if (state === 'run') {
       const sw = Math.sin(t * 11 + person.userData.phase);
       out.hipLX = sw * 0.75; out.hipRX = -sw * 0.75;
@@ -663,9 +686,15 @@
       placePerson(striker, 0, 10, Math.PI, state.strikerId === myPid);
       placePerson(nonStriker, 0.9, -10, 0, state.nonStrikerId === myPid);
 
-      if (swingStart != null) {
-        const k = Math.min(1, (performance.now() - swingStart) / 340);
-        animate(striker, 'swing', t, dt, { k: k });
+      if (swing) {
+        const elapsed = performance.now() - swing.start;
+        if (elapsed > 620) swing = null;
+        else {
+          const k = Math.min(1, elapsed / 520);
+          animate(striker, 'swing', t, dt, { k: k, type: swing.type, foot: swing.foot });
+          // turn the body toward where the ball was hit
+          striker.rotation.y = Math.PI + (swing.dir * 0.5) * Math.PI / 180;
+        }
       } else {
         animate(striker, 'stance', t, dt);
       }
@@ -732,9 +761,9 @@
           .slice(0, 2);
         const cx = (bx + near.reduce((sum, f) => sum + f.x, 0)) / (1 + near.length);
         const cy = (by + near.reduce((sum, f) => sum + f.y, 0)) / (1 + near.length);
-        const spread = Math.max(6, ...near.map((f) => Math.hypot(f.x - bx, f.y - by)));
-        const back = clamp(13 + spread * 0.95, 13, 36);
-        const up = clamp(7 + spread * 0.55, 7, 24);
+        const spread = Math.max(8, ...near.map((f) => Math.hypot(f.x - bx, f.y - by)));
+        const back = clamp(17 + spread * 0.8, 17, 36);
+        const up = clamp(9.5 + spread * 0.5, 9.5, 24);
         targetPos.set(cx * 0.7, up, cy - back);
         targetLook.set(cx, 0.8, cy);
       } else if (cam.mode === 'batter') {
@@ -779,7 +808,15 @@
       lastPhase = state.phase;
     }
 
-    function onShot() { swingStart = performance.now(); setTimeout(() => { swingStart = null; }, 420); }
+    let swing = null;
+    function onShot(info) {
+      swing = {
+        start: performance.now(),
+        type: (info && info.type) || 'drive',
+        dir: (info && info.dir) || 0,
+        foot: (info && info.foot) || 'neutral'
+      };
+    }
 
     return { renderer, scene, camera, resize, render, setCameraMode, setAutoCamera, cameraMode, setPreview, clearPreview, setReviewPath, clearReviewPath, setQuality, onShot, dispose() { renderer.dispose(); } };
   }

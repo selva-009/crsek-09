@@ -60,7 +60,8 @@ function dirOf(type, aim){
   r3.setShot('a1',{type,dir:aim});
   r3.phase='inplay';
   r3.startInPlay(r3.pendingShot); r3.clearTimers();
-  const a=Math.atan2(r3.ball.landing.x, -(r3.ball.landing.y-10))*180/Math.PI;
+  const b=r3.ball;
+  const a=Math.atan2(b.vx, -b.vy)*180/Math.PI;   // launch direction
   return Math.round(a);
 }
 out.shotDirections = { drive:dirOf('drive',0), pull:dirOf('pull',0), cut:dirOf('cut',0), sweep:dirOf('sweep',0), loft:dirOf('loft',0) };

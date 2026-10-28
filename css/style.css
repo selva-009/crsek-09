@@ -237,12 +237,12 @@ input:focus { border-color: var(--accent); }
   transition: transform 0.05s linear;
 }
 
-.btns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; flex: 0 1 190px; }
+.btns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; flex: 0 1 166px; }
 .btns.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .gbtn {
   appearance: none; border: 1px solid rgba(255, 255, 255, 0.16);
   background: rgba(8, 24, 16, 0.72); color: var(--txt);
-  border-radius: 14px; padding: 13px 8px; font-size: 13px; font-weight: 700;
+  border-radius: 14px; padding: 12px 6px; font-size: 12.5px; font-weight: 700;
   font-family: inherit; cursor: pointer; backdrop-filter: blur(8px);
   display: flex; flex-direction: column; align-items: center; gap: 2px;
 }
@@ -361,7 +361,7 @@ input:focus { border-color: var(--accent); }
 /* ---------- virtual sticks ---------- */
 .stick-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .pad {
-  width: 132px; height: 132px; border-radius: 50%;
+  width: 118px; height: 118px; border-radius: 50%;
   background: radial-gradient(circle at 50% 45%, rgba(18,52,38,0.72), rgba(6,20,13,0.78));
   border: 1.5px solid rgba(255, 255, 255, 0.18);
   position: relative; touch-action: none; flex: 0 0 auto;
