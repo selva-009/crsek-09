@@ -79,6 +79,16 @@
     const collar = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.05, 0.20), trimMat);
     collar.position.y = 0.53;
     hips.add(collar);
+    const belt = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.045, 0.19), trimMat);
+    belt.position.y = 0.02;
+    hips.add(belt);
+    if (!isUmp) {
+      [-1, 1].forEach((sd) => {
+        const sleeve = new THREE.Mesh(new THREE.BoxGeometry(0.115, 0.16, 0.155), kitMat);
+        sleeve.position.set(sd * 0.19, 0.40, 0);
+        hips.add(sleeve);
+      });
+    }
 
     // ---- head + helmet ----
     const headGroup = new THREE.Group();
@@ -126,6 +136,20 @@
       const eyes = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.016, 0.02), darkMat);
       eyes.position.set(0, 0.185, 0.105);
       headGroup.add(eyes);
+      const nose = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.05, 0.035), skinMat);
+      nose.position.set(0, 0.155, 0.112);
+      headGroup.add(nose);
+      const hair = new THREE.Mesh(new THREE.SphereGeometry(0.118, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.45), darkMat);
+      hair.position.y = 0.175;
+      hair.rotation.x = -0.35;
+      headGroup.add(hair);
+      // helmet strap + ear guards
+      [-1, 1].forEach((sd) => {
+        const guard = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), kitMat);
+        guard.position.set(sd * 0.10, 0.14, 0.02);
+        guard.scale.set(0.7, 1, 1);
+        headGroup.add(guard);
+      });
     }
 
     // ---- arms ----
@@ -188,9 +212,15 @@
     let bat = null;
     if (role === 'bat') {
       bat = new THREE.Group();
-      const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.26, 6), darkMat);
-      handle.position.y = 0.13;
+      const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.017, 0.24, 8), darkMat);
+      handle.position.y = 0.12;
       bat.add(handle);
+      const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.019, 0.10, 8), trimMat);
+      grip.position.y = 0.06;
+      bat.add(grip);
+      const shoulder = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.05, 0.032), woodMat);
+      shoulder.position.y = -0.005;
+      bat.add(shoulder);
       const blade = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.42, 0.035), woodMat);
       blade.position.y = -0.21;
       blade.castShadow = true;
@@ -248,12 +278,13 @@
       out.torsoY = -0.22;
     } else if (state === 'swing') {
       const k = Math.min(1, (extra && extra.k != null) ? extra.k : 0);
-      const swing = Math.sin(k * Math.PI);
+      const lift = k < 0.22 ? k / 0.22 : 1;                 // backlift first
+      const swing = k < 0.22 ? 0 : Math.sin(((k - 0.22) / 0.78) * Math.PI);
       out.torsoY = -0.22 + swing * 0.85;
       out.torsoX = 0.10 + swing * 0.10;
-      out.armRX = -0.55 - swing * 1.9;
-      out.elbowR = 0.75 - swing * 0.55;
-      out.armLX = -0.35 - swing * 0.7;
+      out.armRX = -0.55 - lift * 0.55 - swing * 1.9;
+      out.elbowR = 0.75 + lift * 0.5 - swing * 0.55;
+      out.armLX = -0.35 - lift * 0.3 - swing * 0.7;
       out.hipLX = -0.12; out.hipRX = 0.10;
       out.kneeL = 0.18 + swing * 0.15;
     } else if (state === 'run') {
@@ -691,9 +722,9 @@
       } else if (cam.mode === 'batter') {
         // over the striker's shoulder down the pitch; pulls back as the ball flies away
         // offset to the off side so the striker sits clear of the shot buttons
-        const back = 22 + Math.min(6, ballDist * 0.18);
-        targetPos.set(2.6 + bx * 0.2, 9.2 + Math.min(2.5, ballDist * 0.09), back);
-        targetLook.set(2.2 + bx * 0.35, 0.6, live ? Math.min(6, (10 + by) / 2) : -10);
+        const back = 19 + Math.min(5, ballDist * 0.16);
+        targetPos.set(0.5 + bx * 0.2, 6.4 + Math.min(2, ballDist * 0.08), back);
+        targetLook.set(3.0 + bx * 0.35, 0.9, live ? Math.min(6, (10 + by) / 2) : -6);
       } else if (cam.mode === 'broadcast') {
         // follows the ball so the batter, ball and chasing fielders stay in frame
         const back = clamp(30 + ballDist * 0.4, 30, 50);
