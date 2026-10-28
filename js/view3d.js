@@ -805,8 +805,16 @@
         else { person = fielderPool[poolIdx++]; if (!person) return; person.visible = true; }
         person.userData.joints.torso.material.color.set(sp.kit || (sp.keeper ? '#f0b429' : '#e8eef2'));
         placePerson(person, sp.x, sp.y, Math.PI, sp.ownerId && sp.ownerId === myPid);
-        const moving = state.phase === 'inplay';
-        animate(person, moving ? 'run' : 'walk', t, dt);
+        // animation follows the fielder's actual speed, so a player standing in
+        // the field stands still instead of jogging on the spot
+        const lx = person.userData.lastX;
+        const ly = person.userData.lastY;
+        let speed = 0;
+        if (lx != null && dt > 0) speed = Math.hypot(sp.x - lx, sp.y - ly) / dt;
+        person.userData.lastX = sp.x;
+        person.userData.lastY = sp.y;
+        const fState = speed > 3.2 ? 'run' : speed > 0.5 ? 'walk' : 'stance';
+        animate(person, fState, t, dt);
       });
 
       animate(umpireA, 'stance', t, dt);

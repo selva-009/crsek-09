@@ -114,7 +114,43 @@
     }
     later(ms, fn) { const t = setTimeout(fn, ms); this.timers.push(t); return t; }
     clearTimers() { this.timers.forEach(clearTimeout); this.timers = []; }
-    stop() { this.clearTimers(); this.phase = 'done'; }
+    stop() {
+      this.clearTimers();
+      if (this._fieldTimer) { clearInterval(this._fieldTimer); this._fieldTimer = null; }
+      this.phase = 'done';
+    }
+
+    // between balls the AI fielders walk back to their positions instead of
+    // standing in a heap where the ball stopped
+    startFieldLoop() {
+      if (this._fieldTimer) return;
+      this._fieldTimer = setInterval(() => {
+        if (this.phase === 'done') {
+          clearInterval(this._fieldTimer);
+          this._fieldTimer = null;
+          return;
+        }
+        if (this.phase === 'inplay' || this.phase === 'flight') return;
+        let moved = false;
+        this.fielders.forEach((f) => {
+          if (f.ownerId) return;                       // humans steer their own fielder
+          const hx = f.homeX != null ? f.homeX : f.x;
+          const hy = f.homeY != null ? f.homeY : f.y;
+          const dx = hx - f.x, dy = hy - f.y;
+          const d = Math.hypot(dx, dy);
+          if (d > 30) {
+            // miles out of position: reset rather than watch them jog for 15 s
+            f.x = hx; f.y = hy; moved = true;
+          } else if (d > 0.3) {
+            const step = 9.5 * 0.12;                 // jog back, not stroll
+            f.x += (dx / d) * Math.min(step, d);
+            f.y += (dy / d) * Math.min(step, d);
+            moved = true;
+          } else if (d > 0) { f.x = hx; f.y = hy; moved = true; }
+        });
+        if (moved) this.broadcast();
+      }, 120);
+    }
 
     // ---------- seat control (disconnect / reconnect) ----------
     setBot(playerId, isBot) {
@@ -141,6 +177,7 @@
     // ---------- setup ----------
     start() {
       this.placeField();
+      this.startFieldLoop();
       if (this.forceBatFirst) {
         this.tossWinner = 0;
         this.captainId = null;
@@ -219,12 +256,15 @@
     placeField() {
       const bt = this.bowlTeam();
       const humans = bt.players.filter((p) => !p.bot);
-      this.fielders = FIELD_SPOTS.map((s) => ({
-        key: s.key, name: s.name, keeper: !!s.keeper,
-        x: Math.sin((s.ang * Math.PI) / 180) * s.r,
-        y: BATSMAN_POS.y - Math.cos((s.ang * Math.PI) / 180) * s.r,
-        ownerId: null, bot: true
-      }));
+      this.fielders = FIELD_SPOTS.map((s) => {
+        const hx = Math.sin((s.ang * Math.PI) / 180) * s.r;
+        const hy = BATSMAN_POS.y - Math.cos((s.ang * Math.PI) / 180) * s.r;
+        return {
+          key: s.key, name: s.name, keeper: !!s.keeper,
+          x: hx, y: hy, homeX: hx, homeY: hy,
+          ownerId: null, bot: true
+        };
+      });
       const free = this.fielders.filter((f) => !f.keeper).sort((a, b) => b.y - a.y);
       humans.forEach((p, i) => {
         const f = free[i % free.length];
