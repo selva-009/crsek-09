@@ -1080,6 +1080,14 @@
   $('chatBtn').onclick = openChat;
 
   // ---------- boot ----------
+  // optional realistic player asset: if assets/players/player.glb exists it is used,
+  // otherwise the procedural rig stays and nothing changes
+  if (window.PlayerAsset) {
+    PlayerAsset.load('assets/players/player.glb').then((g) => {
+      if (g) toast('Realistic player model loaded');
+    });
+  }
+
   renderKits();
   renderStats();
   if (app.name) { $('whoami').textContent = app.name; show('home'); }

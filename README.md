@@ -181,6 +181,17 @@ The build is checked three ways before each deploy:
 `test/fakepeer.js` substitutes a BroadcastChannel signalling shim so the real netcode can be
 driven across tabs where WebRTC is unavailable (as in CI sandboxes).
 
+## Realistic player assets (drop-in)
+
+The 3D view loads a rigged glTF character from `assets/players/player.glb` if one is there,
+and falls back to the procedural rig if it is not. See `assets/players/README.md` for the
+clip naming the loader looks for. The file is optional — with no asset present the game runs
+exactly as before, and the browser logs one 404 for the missing probe, which is expected.
+
+The loader normalises the model to 1.8 m and grounds its feet, clones it per player with
+`SkeletonUtils`, drives it with an `AnimationMixer`, and strips root translation from clips so
+a baked walk cannot drag a player away from the position the match engine gave them.
+
 ## External assets — what would actually make the players realistic
 
 The current characters are hand-built geometry. Three.js can render realistic humans fine — it supports skinned glTF meshes with bone rigs — but realistic humans have to be *authored*, and procedural boxes and cylinders cannot become anatomically correct characters with facial rigs and mocap-quality animation. That needs external assets, so per your instruction, here is the request before anything is integrated:

@@ -176,6 +176,11 @@
     headGroup.add(hair);
 
     if (isUmp) {
+      // long umpire's coat over the trousers
+      const coat = new THREE.Mesh(geo('coat', () => new THREE.CylinderGeometry(0.175, 0.215, 0.46, 12)), kitMat);
+      coat.scale.z = 0.78;
+      coat.position.y = -0.12;
+      hips.add(coat);
       const hatMat = mat('hat', () => new THREE.MeshStandardMaterial({ color: 0xf7f7f2, roughness: 0.88 }));
       const crown = new THREE.Mesh(geo('hatCrown', () => new THREE.CylinderGeometry(0.104, 0.116, 0.09, 12)), hatMat);
       crown.position.y = 0.29;
@@ -322,6 +327,9 @@
       },
       ring,
       phase: Math.random() * 6.28
+    };
+    root.userData.drive = (state, t, dt, extra) => {
+      applyPose(root, targetPose(state, t, root, extra), dt);
     };
     return root;
   }
@@ -546,21 +554,23 @@
       );
       crease.position.set(0, 0.09, z);
       scene.add(crease);
+      const stumpMat = new THREE.MeshStandardMaterial({ color: 0xf3eee3, roughness: 0.55 });
       [-0.13, 0, 0.13].forEach((x) => {
-        const stump = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.045, 0.045, 0.72, 8),
-          new THREE.MeshStandardMaterial({ color: 0xf2ede2, roughness: 0.6 })
-        );
-        stump.position.set(x, 0.44, z);
+        const stump = new THREE.Mesh(new THREE.CylinderGeometry(0.030, 0.042, 0.71, 10), stumpMat);
+        stump.position.set(x, 0.435, z);
         stump.castShadow = true;
         scene.add(stump);
+        const tip = new THREE.Mesh(new THREE.SphereGeometry(0.030, 8, 6), stumpMat);
+        tip.position.set(x, 0.79, z);
+        scene.add(tip);
       });
-      const bails = new THREE.Mesh(
-        new THREE.BoxGeometry(0.34, 0.03, 0.04),
-        new THREE.MeshStandardMaterial({ color: 0xf2ede2 })
-      );
-      bails.position.set(0, 0.82, z);
-      scene.add(bails);
+      [-0.065, 0.065].forEach((bx) => {
+        const bail = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.11, 8), stumpMat);
+        bail.rotation.z = Math.PI / 2;
+        bail.position.set(bx, 0.815, z);
+        bail.castShadow = true;
+        scene.add(bail);
+      });
     });
 
     // ---- stands ----
@@ -619,24 +629,34 @@
     scene.add(landingRing);
 
     // ---- people ----
-    const striker = makePerson(THREE, '#7fd1ae', 'bat', 1);
-    const nonStriker = makePerson(THREE, '#7fd1ae', 'bat', 3);
-    const bowler = makePerson(THREE, '#ffb4a2', 'bowl', 0);
-    const keeper = makePerson(THREE, '#f0b429', 'keep', 2);
+    // a real rigged glTF wins when one is present; otherwise the procedural rig
+    const useGLB = !!(global.PlayerAsset && global.PlayerAsset.available && global.PlayerAsset.available());
+    function newPerson(kit, role, skinIdx) {
+      if (useGLB) {
+        const p = global.PlayerAsset.instantiate(kit);
+        if (p) { p.userData.role = role; return p; }
+      }
+      return makePerson(THREE, kit, role, skinIdx);
+    }
+
+    const striker = newPerson('#7fd1ae', 'bat', 1);
+    const nonStriker = newPerson('#7fd1ae', 'bat', 3);
+    const bowler = newPerson('#ffb4a2', 'bowl', 0);
+    const keeper = newPerson('#f0b429', 'keep', 2);
     keeper.visible = false;
     scene.add(striker, nonStriker, bowler, keeper);
 
     const fielderPool = [];
     for (let i = 0; i < 12; i++) {
-      const f = makePerson(THREE, '#e8eef2', 'field', i % 5);
+      const f = newPerson('#e8eef2', 'field', i % 5);
       f.visible = false;
       scene.add(f);
       fielderPool.push(f);
     }
 
     // two on-field umpires: bowler's end and square leg
-    const umpireA = makePerson(THREE, '#f2f2ec', 'umpire', 0);
-    const umpireB = makePerson(THREE, '#f2f2ec', 'umpire', 4);
+    const umpireA = newPerson('#f2f2ec', 'umpire', 0);
+    const umpireB = newPerson('#f2f2ec', 'umpire', 4);
     umpireA.position.set(-1.5, 0, -12.4);
     umpireB.position.set(-9.5, 0, 1.5);
     umpireA.rotation.y = 0;
@@ -768,8 +788,8 @@
       const batTeam = state.teams[state.batTeam];
       const strikerP = batTeam.players.find((p) => p.id === state.strikerId) || {};
       const nsP = batTeam.players.find((p) => p.id === state.nonStrikerId) || {};
-      striker.userData.joints.torso.material.color.set(strikerP.kit || '#7fd1ae');
-      nonStriker.userData.joints.torso.material.color.set(nsP.kit || '#7fd1ae');
+      if (striker.userData.joints) striker.userData.joints.torso.material.color.set(strikerP.kit || '#7fd1ae');
+      if (nonStriker.userData.joints) nonStriker.userData.joints.torso.material.color.set(nsP.kit || '#7fd1ae');
 
       placePerson(striker, 0, 10, Math.PI, state.strikerId === myPid);
       placePerson(nonStriker, 0.9, -10, 0, state.nonStrikerId === myPid);
@@ -779,19 +799,22 @@
         if (elapsed > 620) swing = null;
         else {
           const k = Math.min(1, elapsed / 520);
-          animate(striker, 'swing', t, dt, { k: k, type: swing.type, foot: swing.foot });
-          // turn the body toward where the ball was hit
+          if (striker.userData.drive) striker.userData.drive('swing', t, dt, { k: k, type: swing.type, foot: swing.foot });
+          else animate(striker, 'swing', t, dt, { k: k, type: swing.type, foot: swing.foot });
           striker.rotation.y = Math.PI + (swing.dir * 0.5) * Math.PI / 180;
         }
-      } else {
-        animate(striker, 'stance', t, dt);
-      }
-      animate(nonStriker, 'stance', t, dt);
+      } else if (striker.userData.drive) striker.userData.drive('stance', t, dt);
+      else animate(striker, 'stance', t, dt);
+      if (nonStriker.userData.drive) nonStriker.userData.drive('stance', t, dt);
+      else animate(nonStriker, 'stance', t, dt);
 
       // bowler run-up and release
       const bowlerZ = -16 + runUp * 5;
       placePerson(bowler, 0.6, bowlerZ, Math.PI, state.bowlerId === myPid);
-      if (runUp > 0.02) animate(bowler, 'bowl', t, dt, { k: runUp });
+      if (runUp > 0.02) {
+        if (bowler.userData.drive) bowler.userData.drive('bowl', t, dt, { k: runUp });
+        else animate(bowler, 'bowl', t, dt, { k: runUp });
+      } else if (bowler.userData.drive) bowler.userData.drive(state.phase === 'inplay' ? 'run' : 'stance', t, dt);
       else animate(bowler, state.phase === 'inplay' ? 'idle' : 'stance', t, dt);
 
       // fielders (keeper handled separately so it can wear pads)
@@ -803,7 +826,7 @@
         let person;
         if (sp.keeper) { person = keeper; keeper.visible = true; }
         else { person = fielderPool[poolIdx++]; if (!person) return; person.visible = true; }
-        person.userData.joints.torso.material.color.set(sp.kit || (sp.keeper ? '#f0b429' : '#e8eef2'));
+        if (person.userData.joints) person.userData.joints.torso.material.color.set(sp.kit || (sp.keeper ? '#f0b429' : '#e8eef2'));
         placePerson(person, sp.x, sp.y, Math.PI, sp.ownerId && sp.ownerId === myPid);
         // animation follows the fielder's actual speed, so a player standing in
         // the field stands still instead of jogging on the spot
@@ -814,11 +837,12 @@
         person.userData.lastX = sp.x;
         person.userData.lastY = sp.y;
         const fState = speed > 3.2 ? 'run' : speed > 0.5 ? 'walk' : 'stance';
-        animate(person, fState, t, dt);
+        if (person.userData.drive) person.userData.drive(fState, t, dt);
+        else animate(person, fState, t, dt);
       });
 
-      animate(umpireA, 'stance', t, dt);
-      animate(umpireB, 'stance', t * 0.8, dt);
+      if (umpireA.userData.drive) umpireA.userData.drive('stance', t, dt); else animate(umpireA, 'stance', t, dt);
+      if (umpireB.userData.drive) umpireB.userData.drive('stance', t * 0.8, dt); else animate(umpireB, 'stance', t * 0.8, dt);
 
       // ball
       const b = state.ball;
@@ -918,7 +942,7 @@
       };
     }
 
-    return { renderer, scene, camera, resize, render, setCameraMode, setAutoCamera, cameraMode, setPreview, clearPreview, setReviewPath, clearReviewPath, setQuality, onShot, dispose() { renderer.dispose(); } };
+    return { usingGLB: useGLB, renderer, scene, camera, resize, render, setCameraMode, setAutoCamera, cameraMode, setPreview, clearPreview, setReviewPath, clearReviewPath, setQuality, onShot, dispose() { renderer.dispose(); } };
   }
 
   global.View3D = { create };
