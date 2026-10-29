@@ -428,9 +428,12 @@
       out.hipLX = -0.35; out.hipRX = 0.2;
       out.kneeL = 0.5; out.kneeR = 0.2;
     } else if (state === 'catch') {
-      out.armLX = -2.6; out.armRX = -2.6;
-      out.elbowL = 0.3; out.elbowR = 0.3;
-      out.torsoX = -0.08;
+      // extra.env comes from the mocap clip: 0 = arms down, 1 = full stretch
+      const e = (extra && extra.env != null) ? extra.env : 1;
+      const k = 0.3 + 0.7 * e;
+      out.armLX = -2.6 * k; out.armRX = -2.6 * k;
+      out.elbowL = 0.3 + (1 - e) * 0.5; out.elbowR = 0.3 + (1 - e) * 0.5;
+      out.torsoX = -0.08 - (1 - e) * 0.12;
       out.kneeL = 0.3; out.kneeR = 0.3;
       out.hipsY = 0.86;
     } else if (state === 'throw') {
@@ -781,6 +784,16 @@
       if (document.hidden) return;
       const t = performance.now() / 1000;
 
+      // advance the mocap catch and read how far through the arc we are
+      if (catchPlay) {
+        const env = global.CatchAnim ? global.CatchAnim.update(dt) : null;
+        catchEnv = env ? Math.max(env.l, env.r) : 0;
+        catchElapsed += dt;                       // frame-time based, not wall clock
+        if (catchElapsed > (global.CatchAnim && global.CatchAnim.clip ? global.CatchAnim.clip.duration : 2.6)) {
+          catchPlay = null; catchEnv = 0;
+        }
+      }
+
       if (state.phase === 'flight') runUp = Math.min(1, runUp + dt * 2.4);
       else if (state.phase === 'delivery' || state.phase === 'ready') runUp = Math.max(0, runUp - dt * 1.5);
 
@@ -836,9 +849,11 @@
         if (lx != null && dt > 0) speed = Math.hypot(sp.x - lx, sp.y - ly) / dt;
         person.userData.lastX = sp.x;
         person.userData.lastY = sp.y;
-        const fState = speed > 3.2 ? 'run' : speed > 0.5 ? 'walk' : 'stance';
-        if (person.userData.drive) person.userData.drive(fState, t, dt);
-        else animate(person, fState, t, dt);
+        const catching = catchPlay && sp.keeper;
+        const fState = catching ? 'catch' : speed > 3.2 ? 'run' : speed > 0.5 ? 'walk' : 'stance';
+        const extra = catching ? { env: catchEnv } : undefined;
+        if (person.userData.drive) person.userData.drive(fState, t, dt, extra);
+        else animate(person, fState, t, dt, extra);
       });
 
       if (umpireA.userData.drive) umpireA.userData.drive('stance', t, dt); else animate(umpireA, 'stance', t, dt);
@@ -933,6 +948,18 @@
     }
 
     let swing = null;
+    let catchPlay = null;
+    let catchEnv = 0;
+    let catchElapsed = 0;
+
+    function playCatch() {
+      if (global.CatchAnim && global.CatchAnim.ready) {
+        global.CatchAnim.restart();
+        catchPlay = performance.now();
+        catchEnv = 0;
+        catchElapsed = 0;
+      }
+    }
     function onShot(info) {
       swing = {
         start: performance.now(),
@@ -942,7 +969,7 @@
       };
     }
 
-    return { usingGLB: useGLB, renderer, scene, camera, resize, render, setCameraMode, setAutoCamera, cameraMode, setPreview, clearPreview, setReviewPath, clearReviewPath, setQuality, onShot, dispose() { renderer.dispose(); } };
+    return { usingGLB: useGLB, renderer, scene, camera, resize, render, setCameraMode, setAutoCamera, cameraMode, setPreview, clearPreview, setReviewPath, clearReviewPath, setQuality, playCatch, onShot, dispose() { renderer.dispose(); } };
   }
 
   global.View3D = { create };

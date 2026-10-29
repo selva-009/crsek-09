@@ -495,6 +495,7 @@
     }
     else if (type === 'throw') { blip(260, 0.07, 'square'); toast(p.hit ? 'Direct hit!' : 'Throw comes in'); }
     else if (type === 'result') {
+      if (p.kind === 'caught' && app.view3d && app.view3d.playCatch) app.view3d.playCatch();
       flash(p.text);
       if (p.kind === 'six' || p.kind === 'four') blip(680, 0.16, 'sine');
       else if (p.wicket) blip(120, 0.22, 'sawtooth');
@@ -1150,6 +1151,12 @@
   // ---------- boot ----------
   // optional realistic player asset: if assets/players/player.glb exists it is used,
   // otherwise the procedural rig stays and nothing changes
+  if (window.CatchAnim) {
+    CatchAnim.load('assets/anim/catch.fbx').then((ok) => {
+      if (ok) app.catchAnim = true;
+    });
+  }
+
   if (window.PlayerAsset) {
     PlayerAsset.load('assets/players/player.glb').then((g) => {
       if (g) toast('Realistic player model loaded');

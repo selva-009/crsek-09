@@ -77,6 +77,12 @@ screen, the way mobile cricket games do, and a fielding throw runs off an accura
 green / orange / yellow / red zones, so a direct hit is earned rather than rolled. A CANCEL button
 sends a called run back.
 
+**Catch animation** — `assets/anim/catch.fbx` (a Mixamo catch clip, supplied for this build) is parsed
+with `FBXLoader` and played on a hidden skeleton. Our players use a procedural rig rather than a
+Mixamo skeleton, so the clip cannot be applied bone-for-bone; what transfers is its motion — the arm
+arc and timing — which drives the catch pose. The keeper reaches up and holds for the length of the
+clip when a catch is taken. The mesh in the file is not rendered.
+
 **Umpires and DRS** — two on-field umpires stand on the field (bowler's end and square leg). An LBW
 opens a seven-second review window for the batting side: one review per team per innings, kept if
 the review succeeds. The third umpire runs ball tracking on the same delivery data the on-field

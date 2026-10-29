@@ -1,0 +1,46 @@
+const http=require('http'),fs=require('fs'),path=require('path'),puppeteer=require('puppeteer-core');
+const ROOT=require('path').resolve(__dirname,'..'),PORT=8069;
+const MIME={'.html':'text/html','.js':'text/javascript','.css':'text/css','.fbx':'application/octet-stream'};
+const server=http.createServer((q,r)=>{let p=decodeURIComponent(q.url.split('?')[0]);if(p==='/')p='/index.html';const f=path.join(ROOT,p);if(!fs.existsSync(f)){r.writeHead(404);return r.end('nf');}r.writeHead(200,{'Content-Type':MIME[path.extname(f)]||'application/octet-stream'});fs.createReadStream(f).pipe(r);});
+(async()=>{
+ await new Promise(r=>server.listen(PORT,r));
+ const b=await puppeteer.launch({executablePath:'/usr/local/bin/chromium',args:['--no-sandbox','--disable-dev-shm-usage','--use-gl=swiftshader','--enable-unsafe-swiftshader'],headless:'new'});
+ const p=await b.newPage();await p.setViewport({width:520,height:640,deviceScaleFactor:2});
+ await p.goto('http://localhost:'+PORT+'/',{waitUntil:'domcontentloaded'});
+ await p.addScriptTag({url:'https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js'});
+ await p.addScriptTag({url:'https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js'});
+ await p.addScriptTag({url:'https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/loaders/FBXLoader.js'});
+ const ok=await p.evaluate(async (url)=>{
+   const THREE=window.THREE;
+   const renderer=new THREE.WebGLRenderer({antialias:true});
+   renderer.setSize(520,640); renderer.setClearColor(0x203040);
+   document.body.innerHTML=''; document.body.appendChild(renderer.domElement);
+   const scene=new THREE.Scene();
+   scene.add(new THREE.HemisphereLight(0xffffff,0x334455,1.2));
+   const d=new THREE.DirectionalLight(0xffffff,1.1); d.position.set(2,4,3); scene.add(d);
+   const cam=new THREE.PerspectiveCamera(40,520/640,0.01,100);
+   const obj=await new Promise((res,rej)=>new THREE.FBXLoader().load(url,res,undefined,rej));
+   // normalise: FBX is in cm
+   obj.updateMatrixWorld(true);
+   const box=new THREE.Box3().setFromObject(obj); const size=new THREE.Vector3(); box.getSize(size);
+   const s=1.8/(size.y||180); obj.scale.setScalar(s);
+   obj.updateMatrixWorld(true);
+   const b2=new THREE.Box3().setFromObject(obj); obj.position.y -= b2.min.y;
+   obj.updateMatrixWorld(true);
+   scene.add(obj);
+   const mixer=new THREE.AnimationMixer(obj);
+   const clip=obj.animations.find(a=>a.duration>0.1);
+   mixer.clipAction(clip).play();
+   mixer.update(clip.duration*0.5);
+   const bb=new THREE.Box3().setFromObject(obj); const c=new THREE.Vector3(); bb.getCenter(c); const sz=new THREE.Vector3(); bb.getSize(sz);
+   const dist=Math.max(sz.x,sz.y,sz.z)*1.5;
+   cam.position.set(c.x + dist*0.5, c.y + dist*0.15, c.z + dist);
+   cam.lookAt(c.x, c.y, c.z);
+   window.__dbg={center:[+c.x.toFixed(2),+c.y.toFixed(2),+c.z.toFixed(2)],size:[+sz.x.toFixed(2),+sz.y.toFixed(2),+sz.z.toFixed(2)],d:+dist.toFixed(2)};
+   renderer.render(scene,cam);
+   return {clip:clip.name,dur:clip.duration,tracks:clip.tracks.length,dbg:window.__dbg};
+ }, 'http://localhost:'+PORT+'/assets/anim/catch.fbx');
+ await p.screenshot({path:require('path').resolve(__dirname,'catchpose.png')});
+ console.log(JSON.stringify(ok));
+ await b.close();server.close();setTimeout(()=>process.exit(0),200);
+})();
