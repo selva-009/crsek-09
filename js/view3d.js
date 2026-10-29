@@ -388,7 +388,7 @@
       out.rootY = -sp.crouch * 0.5;
       out.tilt = 0;
       // bat stays on the swing plane rather than clipping the body
-      if (person.userData.joints.bat) person.userData.joints.bat.rotation.z = 0.2 + swing * (type === 'sweep' ? 1.1 : 0.35);
+      if (person.userData.joints && person.userData.joints.bat) person.userData.joints.bat.rotation.z = 0.2 + swing * (type === 'sweep' ? 1.1 : 0.35);
     } else if (state === 'walk') {
       const sw = Math.sin(t * 6 + person.userData.phase);
       out.hipLX = sw * 0.42; out.hipRX = -sw * 0.42;
@@ -634,7 +634,27 @@
     // ---- people ----
     // a real rigged glTF wins when one is present; otherwise the procedural rig
     const useGLB = !!(global.PlayerAsset && global.PlayerAsset.available && global.PlayerAsset.available());
-    function newPerson(kit, role, skinIdx) {
+    function newPerson(kit, role, skinIdx, useMesh) {
+      // a real skinned body from the supplied FBX, used for the players closest to
+      // the camera; distant fielders stay procedural to keep the vertex budget sane
+      const wantMesh = global.__crsekPlayerModel !== 'classic';
+      if (useMesh !== false && wantMesh && global.MeshRig && global.MeshRig.ready) {
+        const mesh = global.MeshRig.create(kit);
+        if (mesh) {
+          mesh.userData.role = role;
+          mesh.userData.phase = Math.random() * 6.28;
+          mesh.userData.pose = {
+            torsoX: 0, torsoY: 0, hipsY: 0.94, armLX: 0, armRX: 0, armLZ: 0.08, armRZ: -0.08,
+            elbowL: 0, elbowR: 0, hipLX: 0, hipRX: 0, kneeL: 0, kneeR: 0, ankleL: 0, ankleR: 0,
+            rootY: 0, tilt: 0
+          };
+          mesh.userData.drive = (state, t, dt, extra) => {
+            const target = targetPose(state, t, mesh, extra);
+            if (global.MeshRig) global.MeshRig.apply(mesh, target);
+          };
+          return mesh;
+        }
+      }
       if (useGLB) {
         const p = global.PlayerAsset.instantiate(kit);
         if (p) { p.userData.role = role; return p; }
@@ -651,7 +671,7 @@
 
     const fielderPool = [];
     for (let i = 0; i < 12; i++) {
-      const f = newPerson('#e8eef2', 'field', i % 5);
+      const f = newPerson('#e8eef2', 'field', i % 5, i < 2);
       f.visible = false;
       scene.add(f);
       fielderPool.push(f);
@@ -767,7 +787,7 @@
     function placePerson(person, ex, ey, faceY, isMine) {
       person.position.set(ex, 0, ey);
       if (faceY !== null) person.rotation.y = faceY;
-      person.userData.ring.visible = !!isMine;
+      if (person.userData.ring) person.userData.ring.visible = !!isMine;
     }
 
     function animate(person, state, t, dt, extra) {

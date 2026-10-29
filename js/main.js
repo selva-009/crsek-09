@@ -16,7 +16,7 @@
     lastMoveSent: 0, view: null, view3d: null, use3d: true, camera: 'broadcast',
     kit: '#7fd1ae', stats: { m: 0, r: 0, w: 0, win: 0, best: 0 },
     lastFrame: 0, socketReady: false,
-    settings: { sens: 1, sound: true, gfx: 'auto', cam: 'auto', ctl: 'buttons' }
+    settings: { sens: 1, sound: true, gfx: 'auto', cam: 'auto', ctl: 'buttons', players: 'mesh' }
   };
 
   function pid() {
@@ -600,6 +600,7 @@
     $('setGfx').value = app.settings.gfx;
     $('setCam').value = app.settings.cam;
     $('setCtl').value = app.settings.ctl;
+    $('setPlayers').value = app.settings.players;
     $('settings').classList.remove('hidden');
   }
   function saveSettings() { localStorage.setItem('crsek09_settings', JSON.stringify(app.settings)); }
@@ -615,6 +616,12 @@
     if (app.view3d && app.view3d.setQuality) app.view3d.setQuality(app.settings.gfx);
   };
   $('setCam').onchange = (e) => { app.settings.cam = e.target.value; saveSettings(); applyCameraSetting(); };
+  $('setPlayers').onchange = (e) => {
+    app.settings.players = e.target.value;
+    saveSettings();
+    window.__crsekPlayerModel = app.settings.players;
+    toast(app.settings.players === 'mesh' ? 'Detailed players — applies next match' : 'Classic players — applies next match');
+  };
   $('setCtl').onchange = (e) => {
     app.settings.ctl = e.target.value; saveSettings();
     app.ctrlSig = '';
@@ -1149,6 +1156,8 @@
   $('chatBtn').onclick = openChat;
 
   // ---------- boot ----------
+  window.__crsekPlayerModel = app.settings.players || 'mesh';
+
   // optional realistic player asset: if assets/players/player.glb exists it is used,
   // otherwise the procedural rig stays and nothing changes
   if (window.CatchAnim) {

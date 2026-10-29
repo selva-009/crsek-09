@@ -26,7 +26,10 @@
           this.clip = clip;
           this.url = url;
 
-          // the mesh is not needed — only the skeleton drives anything
+          // capture the bind pose before anything plays, so mesh clones start clean
+          const bindPose = {};
+          obj.traverse((o) => { if (o.isBone) bindPose[o.name] = o.quaternion.clone(); });
+          this._bindPose = bindPose;
           obj.visible = false;
           this._root = obj;
           this._mixer = new THREE.AnimationMixer(obj);
@@ -48,7 +51,11 @@
             if (r) probe.r = Math.max(probe.r, Math.abs(r.quaternion.x) + Math.abs(r.quaternion.z));
           }
           this._peak = { l: probe.l || 1, r: probe.r || 1 };
+          // restore the bind pose so MeshRig clones a clean skeleton
           this._mixer.setTime(0);
+          obj.traverse((o) => { if (o.isBone && bindPose[o.name]) o.quaternion.copy(bindPose[o.name]); });
+          obj.updateMatrixWorld(true);
+          if (global.MeshRig) global.MeshRig.init(obj);
           this.ready = true;
           resolve(true);
         }, undefined, (err) => {
