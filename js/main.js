@@ -16,7 +16,7 @@
     lastMoveSent: 0, view: null, view3d: null, use3d: true, camera: 'broadcast',
     kit: '#7fd1ae', stats: { m: 0, r: 0, w: 0, win: 0, best: 0 },
     lastFrame: 0, socketReady: false,
-    settings: { sens: 1, sound: true, gfx: 'auto', cam: 'auto' }
+    settings: { sens: 1, sound: true, gfx: 'auto', cam: 'auto', ctl: 'buttons' }
   };
 
   function pid() {
@@ -462,9 +462,10 @@
       case 'delivery': app.runner.setDelivery(playerPid, { line: p.line, length: p.length, type: p.type, release: p.release }); break;
       case 'shot': app.runner.setShot(playerPid, { dir: p.dir, type: p.type }); break;
       case 'move': app.runner.fielderInput(playerPid, { x: p.x, y: p.y }); break;
-      case 'action': app.runner.fielderAction(playerPid, p.kind, p.target); break;
+      case 'action': app.runner.fielderAction(playerPid, p.kind, p.target, p.accuracy); break;
       case 'run': app.runner.callRun(playerPid); break;
       case 'review': app.runner.callReview(playerPid); break;
+      case 'cancel': app.runner.cancelRun(playerPid); break;
       case 'bat': if (app.runner.captainId === playerPid) app.runner.chooseBat(!!p.bat); break;
     }
   }
@@ -479,6 +480,15 @@
   function handleEvent(type, p) {
     if (type === 'delivery') { app.flightStart = performance.now(); blip(420, 0.08, 'triangle'); }
     else if (type === 'shot') {
+      const tm = (p && p.shot && p.shot.timing) || '';
+      if (tm) {
+        const label = tm === 'perfect' ? 'PERFECT' : tm === 'good' ? 'GOOD' : tm === 'early' ? 'TOO EARLY' : 'TOO LATE';
+        const el = $('timingTag');
+        el.textContent = label;
+        el.className = 'timing-tag show ' + tm;
+        clearTimeout(app.timingTimer);
+        app.timingTimer = setTimeout(() => { el.className = 'timing-tag'; }, 900);
+      }
       blip(180, 0.09, 'square');
       const sh = (p && p.shot) || {};
       if (app.view3d) app.view3d.onShot({ type: sh.type, dir: sh.dir, foot: sh.foot });
@@ -588,6 +598,7 @@
     $('setSound').checked = !!app.settings.sound;
     $('setGfx').value = app.settings.gfx;
     $('setCam').value = app.settings.cam;
+    $('setCtl').value = app.settings.ctl;
     $('settings').classList.remove('hidden');
   }
   function saveSettings() { localStorage.setItem('crsek09_settings', JSON.stringify(app.settings)); }
@@ -603,6 +614,12 @@
     if (app.view3d && app.view3d.setQuality) app.view3d.setQuality(app.settings.gfx);
   };
   $('setCam').onchange = (e) => { app.settings.cam = e.target.value; saveSettings(); applyCameraSetting(); };
+  $('setCtl').onchange = (e) => {
+    app.settings.ctl = e.target.value; saveSettings();
+    app.ctrlSig = '';
+    if (app.state) renderControls(myRole(app.state), app.state);
+    toast(app.settings.ctl === 'swipe' ? 'Swipe to bat' : 'Button batting');
+  };
   $('settingsClose').onclick = () => $('settings').classList.add('hidden');
   $('settingsBtn').onclick = openSettings;
 
@@ -763,14 +780,22 @@
     if (role === 'bat') {
       pad.classList.remove('hidden');
       btns.className = 'btns';
-      btns.innerHTML = SHOT_BTNS.map(([k, l, s]) =>
-        '<button class="gbtn" data-shot="' + k + '">' + l + '<small>' + s + '</small></button>').join('') +
-        '<button class="gbtn" data-act="run">RUN<small>+1 risky</small></button>';
+      if (app.settings.ctl === 'swipe') {
+        btns.innerHTML = '<div class="swipe-hint">Swipe up to loft<br>Swipe sideways to cut or pull<br>Swipe down to defend</div>' +
+          '<button class="gbtn" data-act="run">RUN<small>+1</small></button>' +
+          '<button class="gbtn" data-act="cancel">CANCEL<small>run</small></button>';
+      } else {
+        btns.innerHTML = SHOT_BTNS.map(([k, l, s]) =>
+          '<button class="gbtn" data-shot="' + k + '">' + l + '<small>' + s + '</small></button>').join('') +
+          '<button class="gbtn" data-act="run">RUN<small>+1 risky</small></button>' +
+          '<button class="gbtn" data-act="cancel">CANCEL<small>run</small></button>';
+      }
       $('padLabel').textContent = 'Aim · step';
     } else if (role === 'nonstriker') {
       pad.classList.add('hidden');
       btns.className = 'btns';
-      btns.innerHTML = '<button class="gbtn big hot" data-act="run">CALL THE RUN<small>press while the ball is live</small></button>';
+      btns.innerHTML = '<button class="gbtn big hot" data-act="run">CALL THE RUN<small>press while the ball is live</small></button>' +
+        '<button class="gbtn" data-act="cancel">CANCEL<small>send them back</small></button>';
     } else if (role === 'bowl') {
       pad.classList.remove('hidden');
       btns.className = 'btns';
@@ -860,6 +885,7 @@
     const act = b.dataset.act;
     if (act === 'release') doRelease();
     else if (act === 'run') sendIntent('run', {});
+    else if (act === 'cancel') sendIntent('cancel', {});
     else if (act === 'catch') sendIntent('action', { kind: 'catch' });
     else if (act === 'dive') sendIntent('action', { kind: 'dive' });
     else if (act === 'score') openScorecard();
@@ -868,9 +894,15 @@
 
   $('throwRow').addEventListener('click', (e) => {
     const b = e.target.closest('button'); if (!b) return;
-    sendIntent('action', { kind: 'throw', target: b.dataset.end });
+    sendIntent('action', { kind: 'throw', target: b.dataset.end, accuracy: throwAccuracy() });
     $('throwRow').classList.add('hidden');
+    $('throwMeter').classList.add('hidden');
   });
+
+  function throwAccuracy() {
+    const v = app.throwValue == null ? 0.6 : app.throwValue;
+    return clamp(1 - Math.abs(v - 0.6) * 2.2, 0, 1);
+  }
 
   function stickDir() {
     if (!app.pad || !app.pad.mag) return 0;
@@ -892,6 +924,33 @@
     const t = (performance.now() - app.meterStart) / 1000;
     return (Math.sin(t * 3.4) + 1) / 2;
   }
+
+  // ---------- swipe batting ----------
+  (function swipeInput() {
+    const cv = $('pitch3d');
+    let down = null;
+    cv.addEventListener('pointerdown', (e) => {
+      if (app.settings.ctl !== 'swipe' || app.role !== 'bat') return;
+      down = { x: e.clientX, y: e.clientY, t: performance.now() };
+    }, { passive: true });
+    cv.addEventListener('pointerup', (e) => {
+      if (!down || app.settings.ctl !== 'swipe' || app.role !== 'bat') { down = null; return; }
+      const dx = e.clientX - down.x, dy = e.clientY - down.y;
+      const dist = Math.hypot(dx, dy);
+      const ms = performance.now() - down.t;
+      down = null;
+      if (dist < 26 || ms > 700) return;
+      const ang = Math.atan2(dx, -dy) * 180 / Math.PI;
+      let type = 'drive';
+      if (dy < -30 && Math.abs(dx) < 45) type = 'loft';
+      else if (dy > 40 && Math.abs(dx) < 45) type = 'defend';
+      else if (dx > 45) type = 'cut';
+      else if (dx < -45) type = 'pull';
+      else if (Math.abs(ang) > 120) type = 'sweep';
+      sendIntent('shot', { type: type, dir: clamp(Math.round(ang), -38, 38), foot: stickFoot() });
+      blip(300, 0.05, 'square');
+    }, { passive: true });
+  })();
 
   // ---------- virtual stick ----------
   Input.lockPage();
@@ -991,6 +1050,15 @@
     $('throwRow').classList.toggle('hidden', !holding);
 
     // fielding: stick drives the fielder, magnitude is sprint
+    if (holding) {
+      $('throwMeter').classList.remove('hidden');
+      const v = (Math.sin(performance.now() / 260) + 1) / 2;
+      app.throwValue = v;
+      $('throwMark').style.left = (v * 100) + '%';
+    } else {
+      $('throwMeter').classList.add('hidden');
+    }
+
     if (app.role === 'field' && app.pad.mag && (st.phase === 'inplay' || st.phase === 'flight')) {
       const now = performance.now();
       if (now - app.lastMoveSent > 55) {

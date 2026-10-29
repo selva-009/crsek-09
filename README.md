@@ -23,6 +23,7 @@ bots so a match always starts. Humans always bat before bots.
 
 | Role | Controls |
 |---|---|
+| Batting — swipe scheme | In Settings set Batting controls to **Swipe**: swipe up to loft, sideways to cut or pull, down to defend. Direction comes from the swipe angle. |
 | Batting (striker only) | Stick aims and sets footwork — push up for front foot, down for back foot. Then Drive / Loft / Pull / Cut / Sweep / Defend. Each shot has its own side and trajectory; timing beats power, and the wrong foot on a length costs accuracy. |
 | Non-striker | **CALL THE RUN** to steal an extra run while the ball is live. |
 | Bowling | Stick sets line (left/right) and length (up = yorker, down = short) with a dashed preview line on the pitch. Type and speed buttons, **RELEASE** stops the meter in the green. |
@@ -70,6 +71,11 @@ chase stays on screen on a narrow phone. The ◎ button overrides it; 3D ↔ 2D 
 **Performance** — pixel ratio is capped and shadows only switch on for devices reporting enough
 cores and a high-density screen. If average frame time slips past ~28 ms the renderer drops
 resolution first and shadows second. Rendering pauses while the tab is hidden.
+
+**Genre-standard feedback** — every shot reports its timing (PERFECT / GOOD / TOO EARLY / TOO LATE) on
+screen, the way mobile cricket games do, and a fielding throw runs off an accuracy meter with
+green / orange / yellow / red zones, so a direct hit is earned rather than rolled. A CANCEL button
+sends a called run back.
 
 **Umpires and DRS** — two on-field umpires stand on the field (bowler's end and square leg). An LBW
 opens a seven-second review window for the batting side: one review per team per innings, kept if

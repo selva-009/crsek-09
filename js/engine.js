@@ -468,9 +468,11 @@
         this.ball.dir = finalDir + (Math.random() < 0.5 ? -70 : 70);
       }
 
+      const dt = (shot.t || 0) - (d && d.traj ? d.traj.contactAt : 0.6);
+      const timing = q >= 0.82 ? 'perfect' : q >= 0.5 ? 'good' : dt < 0 ? 'early' : 'late';
       this.emit('shot', {
         strikerId: this.striker().id,
-        shot: { type: shot.type, dir: finalDir, quality: q, foot: shot.foot || 'neutral', sweet: sweet },
+        shot: { type: shot.type, dir: finalDir, quality: q, foot: shot.foot || 'neutral', sweet: sweet, timing: timing },
         ball: { x: this.ball.x, y: this.ball.y, z: this.ball.z, dir: this.ball.dir, power: power }
       });
       this.broadcast();
@@ -596,6 +598,16 @@
       this.emit('run', { by: playerId });
     }
 
+    cancelRun(playerId) {
+      if (this.phase !== 'inplay' || !this.ball) return;
+      const s = this.striker(), ns = this.nonStriker();
+      if (!s || !ns) return;
+      if (playerId !== s.id && playerId !== ns.id) return;
+      if ((this.ball.extraRuns || 0) <= 0) return;
+      this.ball.extraRuns -= 1;
+      this.emit('run', { by: playerId, cancelled: true });
+    }
+
     fielderInput(playerId, mv) {
       const f = this.fielders.find((x) => x.ownerId === playerId);
       if (!f) return;
@@ -620,15 +632,18 @@
       this.broadcast();
     }
 
-    throwAtStumps(playerId, target) {
+    throwAtStumps(playerId, target, accuracy) {
       if (this.phase !== 'inplay' || !this.ball || !this.ball.stopped) return;
       if (this.ball.heldBy !== playerId) return;
       const stumps = STUMPS[target] || STUMPS.striker;
       const pos = this.ball.stoppedAt || { x: this.ball.x, y: this.ball.y };
       const dist = Math.hypot(pos.x - stumps.x, pos.y - stumps.y);
       const runs = this.ball.extraRuns || 0;
-      let chance = clamp(0.62 - dist / 90, 0.06, 0.55);
+      // accuracy is 0..1 from the throw meter: perfect green, orange, yellow, wild red
+      const acc = accuracy == null ? 0.5 : clamp(accuracy, 0, 1);
+      let chance = clamp(0.62 - dist / 90, 0.06, 0.55) * (0.25 + 1.35 * acc);
       if (runs >= 2) chance += 0.12;
+      chance = clamp(chance, 0.02, 0.92);
       this.emit('throw', { by: playerId, target: target, hit: Math.random() < chance });
       if (Math.random() < chance) {
         return this.finishBall({ kind: 'runout', runs: runs, text: 'RUN OUT! Direct hit at the ' + (target === 'striker' ? "striker's" : "non-striker's") + ' end' });
