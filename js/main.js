@@ -797,7 +797,7 @@
       const guarding = st.batsman && st.batsman.ready === false && (st.phase === 'delivery' || st.phase === 'ready');
       if (guarding) {
         btns.innerHTML = '<button class="gbtn big primary" data-act="ready">READY<small>face the bowler</small></button>' +
-          '<div class="swipe-hint">Move the stick to shuffle across your crease, then press READY.</div>';
+          '<div class="swipe-hint">Stick left/right shuffles across the crease, up steps out toward the bowler. You cannot stand behind the stumps. Then press READY.</div>';
         $('padLabel').textContent = 'Move · guard';
         return;
       }
@@ -1141,6 +1141,16 @@
           '</td><td class="n">' + p.sixes + '</td><td class="n">' + sr + '</td></tr>';
       });
       html += '</table>';
+      const ex = t.score.exD || {};
+      const exBits = [];
+      if (ex.w) exBits.push('w ' + ex.w);
+      if (ex.nb) exBits.push('nb ' + ex.nb);
+      if (ex.b) exBits.push('b ' + ex.b);
+      if (ex.lb) exBits.push('lb ' + ex.lb);
+      if (t.score.extras) {
+        html += '<div class="fine" style="padding:6px 2px">Extras ' + t.score.extras +
+          (exBits.length ? ' (' + exBits.join(', ') + ')' : '') + '</div>';
+      }
       const bowlers = t.players.filter((p) => p.bBalls > 0);
       if (bowlers.length) {
         html += '<table class="sc-table"><tr><th>Bowler</th><th class="n">O</th><th class="n">R</th><th class="n">W</th><th class="n">Econ</th></tr>';

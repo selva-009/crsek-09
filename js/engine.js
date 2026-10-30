@@ -43,6 +43,15 @@
 
   const BOUNDARY = 66;
   const BATSMAN_POS = { x: 0, y: 10 };
+  // the cut strip: no fielder may stand or run on it
+  const PITCH_HALF_W = 2.7;
+  const PITCH_HALF_L = 15;
+  function keepOffPitch(x, y) {
+    if (Math.abs(y) > PITCH_HALF_L) return { x: x, y: y };
+    const min = PITCH_HALF_W;
+    if (Math.abs(x) >= min) return { x: x, y: y };
+    return { x: x >= 0 ? min : -min, y: y };
+  }
   const BOWLER_POS = { x: 0, y: -10 };
   const STUMPS = { striker: { x: 0, y: 10 }, nonstriker: { x: 0, y: -10 } };
   const IDEAL_CONTACT = 0.60;
@@ -145,8 +154,10 @@
             f.x = hx; f.y = hy; moved = true;
           } else if (d > 0.3) {
             const step = 9.5 * 0.12;                 // jog back, not stroll
-            f.x += (dx / d) * Math.min(step, d);
-            f.y += (dy / d) * Math.min(step, d);
+            let nx = f.x + (dx / d) * Math.min(step, d);
+            let ny = f.y + (dy / d) * Math.min(step, d);
+            if (!f.keeper) { const safe = keepOffPitch(nx, ny); nx = safe.x; ny = safe.y; }
+            f.x = nx; f.y = ny;
             moved = true;
           } else if (d > 0) { f.x = hx; f.y = hy; moved = true; }
         });
@@ -288,8 +299,9 @@
       const s = this.striker();
       if (!s || s.id !== playerId) return;
       if (!this.batsman) this.batsman = { x: 0, y: 0, ready: false };
-      this.batsman.x = clamp((this.batsman.x || 0) + (dx || 0), -1.4, 1.4);
-      this.batsman.y = clamp((this.batsman.y || 0) + (dy || 0), -0.9, 1.4);
+      this.batsman.x = clamp((this.batsman.x || 0) + (dx || 0), -1.2, 1.2);
+      // forward out of the crease only — never backwards behind the stumps
+      this.batsman.y = clamp((this.batsman.y || 0) + (dy || 0), 0, 1.2);
       this.broadcast();
     }
 
@@ -580,8 +592,10 @@
         const dd = Math.hypot(dx, dy);
         if (dd > 0.4) {
           const step = (f.keeper ? 7.5 : 7.2) * dt;
-          f.x += (dx / dd) * Math.min(step, dd);
-          f.y += (dy / dd) * Math.min(step, dd);
+          let nx = f.x + (dx / dd) * Math.min(step, dd);
+          let ny = f.y + (dy / dd) * Math.min(step, dd);
+          if (!f.keeper) { const safe = keepOffPitch(nx, ny); nx = safe.x; ny = safe.y; }
+          f.x = nx; f.y = ny;
         }
       });
 
@@ -632,6 +646,12 @@
     rollOut(pos) {
       const p = pos || { x: this.ball.x, y: this.ball.y };
       const d = Math.hypot(p.x, p.y);
+      // beaten and the ball ran past the keeper: byes (or leg-byes if it hit the pad)
+      if (!this.pendingShot && p.y > 21 && Math.abs(p.x) < 26) {
+        const lb = this.ball && this.ball.hitPad;
+        const n = d > 40 ? 2 : 1;
+        return this.finishBall({ kind: lb ? 'legbye' : 'bye', runs: n });
+      }
       let runs = d < 16 ? 0 : d < 26 ? 1 : d < 38 ? 2 : 3;
       runs += this.ball.extraRuns || 0;
       if (this.ball.quality > 0.9 && runs < 3 && Math.random() < 0.3) runs += 1;
@@ -660,6 +680,14 @@
     }
 
     fielderInput(playerId, mv) {
+      const mine = this.fielders.find((f) => f.ownerId === playerId);
+      if (mine && mv) {
+        const nx = mine.x + (mv.x || 0), ny = mine.y + (mv.y || 0);
+        const safe = mine.keeper ? { x: nx, y: ny } : keepOffPitch(nx, ny);
+        mine.x = clamp(safe.x, -70, 70);
+        mine.y = clamp(safe.y, -70, 70);
+        return;
+      }
       const f = this.fielders.find((x) => x.ownerId === playerId);
       if (!f) return;
       if (this.phase !== 'inplay' && this.phase !== 'flight') return;
@@ -696,6 +724,8 @@
       if (runs >= 2) chance += 0.12;
       chance = clamp(chance, 0.02, 0.92);
       this.emit('throw', { by: playerId, target: target, hit: Math.random() < chance });
+      // a throw that misses can run away for overthrows
+      const overthrows = (!this.ball.heldBy || true) && Math.random() < 0.25 ? 1 : 0;
       if (Math.random() < chance) {
         return this.finishBall({ kind: 'runout', runs: runs, text: 'RUN OUT! Direct hit at the ' + (target === 'striker' ? "striker's" : "non-striker's") + ' end' });
       }
@@ -733,6 +763,7 @@
         return;
       }
 
+      const isBye = res.kind === 'bye' || res.kind === 'legbye';
       let runs = res.runs || 0;
       let wicket = ['bowled', 'caught', 'runout', 'stumped', 'lbw'].includes(res.kind);
 
@@ -745,6 +776,12 @@
       this.freeHit = false;
 
       bt.score.balls += 1;
+      if (isBye && runs > 0) {
+        // byes and leg byes are extras, never credited to the batter
+        bt.score.extras += runs;
+        if (!bt.score.exD) bt.score.exD = { w: 0, nb: 0, b: 0, lb: 0, ov: 0 };
+        if (res.kind === 'bye') bt.score.exD.b += runs; else bt.score.exD.lb += runs;
+      }
       this.balls += 1;
       s.b += 1;
       if (b) { b.bBalls += 1; b.bRuns += runs; }
@@ -877,6 +914,8 @@
         case 'lbw': return 'LBW! ' + s.name + ' is trapped in front';
         case 'runout': return 'RUN OUT! Sharp work in the field';
         case 'dot': return res.text || 'No run';
+        case 'bye': return 'Byes — ' + res.runs + ' run' + (res.runs > 1 ? 's' : '');
+        case 'legbye': return 'Leg byes — ' + res.runs + ' run' + (res.runs > 1 ? 's' : '');
         default: { const r = res.runs || 0; return r === 0 ? 'No run' : r + (r === 1 ? ' run' : ' runs'); }
       }
     }
