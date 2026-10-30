@@ -523,12 +523,19 @@
       }
 
       // fielders close in on the ball
-      this.fielders.forEach((f) => {
-        if (f.ownerId) return;
+      // only the two closest fielders chase; everyone else holds their position,
+      // otherwise the whole side converges on the ball like a swarm
+      const chase = this.fielders
+        .filter((f) => !f.ownerId)
+        .map((f) => ({ f: f, d: Math.hypot(b.x - f.x, b.y - f.y) }))
+        .sort((a, c) => a.d - c.d)
+        .slice(0, 2)
+        .map((o) => o.f);
+      chase.forEach((f) => {
         const dx = b.x - f.x, dy = b.y - f.y;
         const dd = Math.hypot(dx, dy);
         if (dd > 0.4) {
-          const step = (f.keeper ? 7.5 : 6.8) * dt;
+          const step = (f.keeper ? 7.5 : 7.2) * dt;
           f.x += (dx / dd) * Math.min(step, dd);
           f.y += (dy / dd) * Math.min(step, dd);
         }

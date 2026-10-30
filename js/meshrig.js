@@ -26,7 +26,7 @@
     },
 
     // A ready-to-place player: 1.8 m tall, feet on the ground, tinted to the kit.
-    create(kitColor) {
+    create(kitColor, role) {
       const THREE = global.THREE;
       if (!this.ready) return null;
 
@@ -65,6 +65,26 @@
       wrap.scale.setScalar(0.01);
       model.updateMatrixWorld(true);
 
+      // a bat for the batters, parented to the hand bone (bone space is cm)
+      if (role === 'bat') {
+        let hand = null;
+        model.traverse((o) => { if (o.isBone && o.name === 'mixamorigRightHand' && !hand) hand = o; });
+        if (hand) {
+          const batMat = new THREE.MeshStandardMaterial({ color: 0xd9c39a, roughness: 0.55 });
+          const gripMat = new THREE.MeshStandardMaterial({ color: 0x222b33, roughness: 0.9 });
+          const bat = new THREE.Group();
+          const handle = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 24, 8), gripMat);
+          handle.position.y = 12;
+          bat.add(handle);
+          const blade = new THREE.Mesh(new THREE.BoxGeometry(9, 52, 3.6), batMat);
+          blade.position.y = -20;
+          bat.add(blade);
+          bat.rotation.x = Math.PI / 2;     // lie the bat along the hand's forward axis
+          bat.position.set(0, -4, 0);
+          hand.add(bat);
+        }
+      }
+
       const bones = {};
       const bind = {};
       if (surface && surface.skeleton) {
@@ -73,7 +93,7 @@
         });
       }
 
-      wrap.userData = { isMesh: true, bones, bind, kit: kitColor };
+      wrap.userData = { isMesh: true, bones, bind, kit: kitColor, role: role };
       return wrap;
     },
 
@@ -96,6 +116,7 @@
       };
 
       const ARM_DOWN = 1.28;
+      const isBat = wrap.userData.role === 'bat';
       const torsoY = pose.torsoY || 0;
       const torsoX = pose.torsoX || 0;
 
@@ -104,8 +125,14 @@
       set('mixamorigHead', -(torsoX * 0.4), -torsoY * 0.4, 0);
 
       // shoulders: base down-pose plus the animated pitch (negative = raised)
-      set('mixamorigRightArm', ARM_DOWN + (pose.armRX || 0), 0, -0.12);
-      set('mixamorigLeftArm', -ARM_DOWN - (pose.armLX || 0), 0, 0.12);
+      if (isBat) {
+        // bat held across the body, hands together — a batting stance, not arms hanging
+        set('mixamorigRightArm', 0.62 + (pose.armRX || 0) * 0.8, 0, -0.45);
+        set('mixamorigLeftArm', -0.34 - (pose.armLX || 0) * 0.8, 0, 0.62);
+      } else {
+        set('mixamorigRightArm', ARM_DOWN + (pose.armRX || 0), 0, -0.12);
+        set('mixamorigLeftArm', -ARM_DOWN - (pose.armLX || 0), 0, 0.12);
+      }
       set('mixamorigRightForeArm', -(pose.elbowR || 0) * 1.1, 0, 0);
       set('mixamorigLeftForeArm', (pose.elbowL || 0) * 1.1, 0, 0);
 

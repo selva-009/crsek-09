@@ -7,6 +7,9 @@
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
   const KITS = ['#7fd1ae', '#4fc3f7', '#ffb4a2', '#ffd54f', '#b58fe0', '#ff8a65'];
+  // every bot gets its own shirt colour so a squad never looks cloned
+  const BOT_KITS = ['#cf5b4a', '#4a7bcf', '#c9a227', '#7a4acf', '#2fa8a0', '#cf4a9c'];
+  const ALLY_KITS = ['#3f9d63', '#2f7fa8', '#8a6d2f', '#5f8a2f', '#2f6f8a'];
 
   const app = {
     name: '', pid: '', isHost: false, net: null, runner: null,
@@ -16,7 +19,7 @@
     lastMoveSent: 0, view: null, view3d: null, use3d: true, camera: 'broadcast',
     kit: '#7fd1ae', stats: { m: 0, r: 0, w: 0, win: 0, best: 0 },
     lastFrame: 0, socketReady: false,
-    settings: { sens: 1, sound: true, gfx: 'auto', cam: 'auto', ctl: 'buttons', players: 'mesh' }
+    settings: { sens: 1, sound: true, gfx: 'auto', cam: 'auto', ctl: 'buttons', players: 'classic' }
   };
 
   function pid() {
@@ -270,8 +273,8 @@
       { name: 'You', players: [{ id: app.pid, name: app.name, bot: false, kit: app.kit }] },
       { name: 'Bots', players: [] }
     ];
-    for (let i = 1; i < per; i++) teams[0].players.push({ id: 'botA' + i, name: 'Ally ' + i, bot: true, kit: '#8fd6a2' });
-    for (let i = 0; i < per; i++) teams[1].players.push({ id: 'botB' + i, name: 'Bot ' + (i + 1), bot: true, kit: '#cf5b4a' });
+    for (let i = 1; i < per; i++) teams[0].players.push({ id: 'botA' + i, name: 'Ally ' + i, bot: true, kit: ALLY_KITS[i % ALLY_KITS.length] });
+    for (let i = 0; i < per; i++) teams[1].players.push({ id: 'botB' + i, name: 'Bot ' + (i + 1), bot: true, kit: BOT_KITS[i % BOT_KITS.length] });
     bootRunner(teams);
   }
 
@@ -415,7 +418,7 @@
     let botN = 1;
     teams.forEach((t) => {
       while (t.players.length < per) {
-        t.players.push({ id: 'bot-' + botN, name: 'Bot ' + botN, bot: true, kit: '#9aa7b2' });
+        t.players.push({ id: 'bot-' + botN, name: 'Bot ' + botN, bot: true, kit: BOT_KITS[(botN - 1) % BOT_KITS.length] });
         botN++;
       }
     });
@@ -1156,7 +1159,7 @@
   $('chatBtn').onclick = openChat;
 
   // ---------- boot ----------
-  window.__crsekPlayerModel = app.settings.players || 'mesh';
+  window.__crsekPlayerModel = app.settings.players || 'classic';
 
   // optional realistic player asset: if assets/players/player.glb exists it is used,
   // otherwise the procedural rig stays and nothing changes

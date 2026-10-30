@@ -557,9 +557,9 @@
       );
       crease.position.set(0, 0.09, z);
       scene.add(crease);
-      const stumpMat = new THREE.MeshStandardMaterial({ color: 0xf3eee3, roughness: 0.55 });
+      const stumpMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35, emissive: 0x333333, emissiveIntensity: 0.35 });
       [-0.13, 0, 0.13].forEach((x) => {
-        const stump = new THREE.Mesh(new THREE.CylinderGeometry(0.030, 0.042, 0.71, 10), stumpMat);
+        const stump = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.050, 0.72, 10), stumpMat);
         stump.position.set(x, 0.435, z);
         stump.castShadow = true;
         scene.add(stump);
@@ -639,7 +639,7 @@
       // the camera; distant fielders stay procedural to keep the vertex budget sane
       const wantMesh = global.__crsekPlayerModel !== 'classic';
       if (useMesh !== false && wantMesh && global.MeshRig && global.MeshRig.ready) {
-        const mesh = global.MeshRig.create(kit);
+        const mesh = global.MeshRig.create(kit, role);
         if (mesh) {
           mesh.userData.role = role;
           mesh.userData.phase = Math.random() * 6.28;
@@ -678,8 +678,9 @@
     }
 
     // two on-field umpires: bowler's end and square leg
-    const umpireA = newPerson('#f2f2ec', 'umpire', 0);
-    const umpireB = newPerson('#f2f2ec', 'umpire', 4);
+    // umpires stay procedural: white coat, hat and dark trousers read as officials
+    const umpireA = makePerson(THREE, '#f2f2ec', 'umpire', 0);
+    const umpireB = makePerson(THREE, '#f2f2ec', 'umpire', 4);
     umpireA.position.set(-1.5, 0, -12.4);
     umpireB.position.set(-9.5, 0, 1.5);
     umpireA.rotation.y = 0;
@@ -824,8 +825,8 @@
       if (striker.userData.joints) striker.userData.joints.torso.material.color.set(strikerP.kit || '#7fd1ae');
       if (nonStriker.userData.joints) nonStriker.userData.joints.torso.material.color.set(nsP.kit || '#7fd1ae');
 
-      placePerson(striker, 0, 10, Math.PI, state.strikerId === myPid);
-      placePerson(nonStriker, 0.9, -10, 0, state.nonStrikerId === myPid);
+      placePerson(striker, 0.42, 8.9, Math.PI, state.strikerId === myPid);
+      placePerson(nonStriker, -0.55, -8.9, 0, state.nonStrikerId === myPid);
 
       if (swing) {
         const elapsed = performance.now() - swing.start;
@@ -923,9 +924,9 @@
       } else if (cam.mode === 'batter') {
         // over the striker's shoulder down the pitch; pulls back as the ball flies away
         // offset to the off side so the striker sits clear of the shot buttons
-        const back = 19 + Math.min(5, ballDist * 0.16);
-        targetPos.set(0.5 + bx * 0.2, 6.4 + Math.min(2, ballDist * 0.08), back);
-        targetLook.set(3.0 + bx * 0.35, 0.9, live ? Math.min(6, (10 + by) / 2) : -6);
+        const back = 14.5 + Math.min(4, ballDist * 0.12);
+        targetPos.set(0.4 + bx * 0.2, 4.8 + Math.min(1.5, ballDist * 0.06), back);
+        targetLook.set(1.5 + bx * 0.35, 1.05, live ? Math.min(8, (10 + by) / 2) : 1.5);
       } else if (cam.mode === 'broadcast') {
         // follows the ball so the batter, ball and chasing fielders stay in frame
         const back = clamp(30 + ballDist * 0.4, 30, 50);
@@ -945,7 +946,8 @@
       // leaves the frame, slow enough that it never looks like a cut
       const rate = live ? 9 : state.phase === 'flight' ? 7 : 4.5;
       const k = 1 - Math.exp(-dt * rate);
-      camera.position.lerp(targetPos, k);
+      if (camera.position.distanceTo(targetPos) > 6) camera.position.copy(targetPos);
+      else camera.position.lerp(targetPos, k);
       tmp.copy(targetLook);
       cam.look.lerp(tmp, k);
       camera.lookAt(cam.look);
