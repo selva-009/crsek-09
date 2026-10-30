@@ -469,6 +469,8 @@
       case 'run': app.runner.callRun(playerPid); break;
       case 'review': app.runner.callReview(playerPid); break;
       case 'cancel': app.runner.cancelRun(playerPid); break;
+      case 'ready': app.runner.setReady(playerPid); break;
+      case 'batmove': app.runner.moveBatsman(playerPid, p.x, p.y); break;
       case 'bat': if (app.runner.captainId === playerPid) app.runner.chooseBat(!!p.bat); break;
     }
   }
@@ -693,7 +695,8 @@
     if (!st) return;
     updateHUD(st);
     const role = myRole(st);
-    if (role !== app.role) { app.role = role; renderControls(role, st); }
+    if (role !== app.role) app.role = role;
+    renderControls(role, st);   // early-returns unless the control signature changed
     if (role === 'captain') {
       $('tossOverlay').classList.remove('hidden');
       $('tossSub').textContent = 'You won the toss. Bat or bowl?';
@@ -784,13 +787,20 @@
 
   function renderControls(role, st) {
     const pad = $('pad'), btns = $('buttons');
-    const sig = role + ':' + st.phase;
+    const sig = role + ':' + st.phase + ':' + (st.batsman && st.batsman.ready === false ? 'g' : 'r');
     if (app.ctrlSig === sig) return;
     app.ctrlSig = sig;
 
     if (role === 'bat') {
       pad.classList.remove('hidden');
       btns.className = 'btns';
+      const guarding = st.batsman && st.batsman.ready === false && (st.phase === 'delivery' || st.phase === 'ready');
+      if (guarding) {
+        btns.innerHTML = '<button class="gbtn big primary" data-act="ready">READY<small>face the bowler</small></button>' +
+          '<div class="swipe-hint">Move the stick to shuffle across your crease, then press READY.</div>';
+        $('padLabel').textContent = 'Move · guard';
+        return;
+      }
       if (app.settings.ctl === 'swipe') {
         btns.innerHTML = '<div class="swipe-hint">Swipe up to loft<br>Swipe sideways to cut or pull<br>Swipe down to defend</div>' +
           '<button class="gbtn" data-act="run">RUN<small>+1</small></button>' +
@@ -897,6 +907,7 @@
     if (act === 'release') doRelease();
     else if (act === 'run') sendIntent('run', {});
     else if (act === 'cancel') sendIntent('cancel', {});
+    else if (act === 'ready') sendIntent('ready', {});
     else if (act === 'catch') sendIntent('action', { kind: 'catch' });
     else if (act === 'dive') sendIntent('action', { kind: 'dive' });
     else if (act === 'score') openScorecard();
@@ -1068,6 +1079,16 @@
       $('throwMark').style.left = (v * 100) + '%';
     } else {
       $('throwMeter').classList.add('hidden');
+    }
+
+    // taking guard: the stick shuffles the batsman around the crease
+    if (app.role === 'bat' && st.batsman && st.batsman.ready === false && app.pad.mag &&
+        (st.phase === 'delivery' || st.phase === 'ready')) {
+      const now = performance.now();
+      if (now - app.lastMoveSent > 90) {
+        app.lastMoveSent = now;
+        sendIntent('batmove', { x: app.pad.x * 0.10, y: -app.pad.y * 0.10 });
+      }
     }
 
     if (app.role === 'field' && app.pad.mag && (st.phase === 'inplay' || st.phase === 'flight')) {

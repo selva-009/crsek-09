@@ -96,6 +96,8 @@
       this.reviews = [1, 1];        // one DRS review per team per innings
       this.pendingReview = null;
       this.lastTracking = null;
+      this.batsman = { x: 0, y: 0, ready: false };
+      this._bowlArmed = false;
       this.partnerRuns = 0;
       this.partnerBalls = 0;
       this.paused = false;
@@ -273,29 +275,71 @@
     }
 
     // ---------- ball cycle ----------
+    setReady(playerId) {
+      const s = this.striker();
+      if (!s || s.id !== playerId) return;
+      if (!this.batsman) this.batsman = { x: 0, y: 0, ready: false };
+      this.batsman.ready = true;
+      this.broadcast();
+      this.armBowler();
+    }
+
+    moveBatsman(playerId, dx, dy) {
+      const s = this.striker();
+      if (!s || s.id !== playerId) return;
+      if (!this.batsman) this.batsman = { x: 0, y: 0, ready: false };
+      this.batsman.x = clamp((this.batsman.x || 0) + (dx || 0), -1.4, 1.4);
+      this.batsman.y = clamp((this.batsman.y || 0) + (dy || 0), -0.9, 1.4);
+      this.broadcast();
+    }
+
+    // the bowler cannot bowl until the striker has taken guard
+    armBowler() {
+      if (this._bowlArmed) return;
+      const b = this.bowler();
+      if (!b) return;
+      this._bowlArmed = true;
+      if (b.bot) {
+        this.later(700, () => {
+          if (this.phase !== 'delivery') return;
+          const d = pick(['good', 'good', 'full', 'short', 'yorker']);
+          this.setDelivery(b.id, {
+            line: rand(-0.45, 0.45), length: d,
+            type: pick(['pace', 'pace', 'swing', 'spin', 'slower']),
+            release: rand(0.25, 0.85), speed: pick(['normal', 'normal', 'fast'])
+          });
+        });
+      } else {
+        this.later(9000, () => {
+          if (this.phase === 'delivery') this.setDelivery(b.id, { line: 0, length: 'good', type: 'pace', release: 0.55, speed: 'normal' });
+        });
+      }
+    }
+
     deliverySetup() {
       if (this.phase === 'done') return;
       this.phase = 'delivery';
       this.pendingDelivery = null;
       this.pendingShot = null;
       this.ball = null;
-      this.msg = 'Bowler runs in';
+      this._bowlArmed = false;
+
+      // the striker takes guard: he can shuffle across the crease, then signal ready
+      this.batsman = { x: 0, y: 0, ready: false };
+      const st = this.striker();
+      if (st && st.bot) this.batsman.ready = true;
+      this.msg = this.batsman.ready ? 'Bowler runs in' : 'Batsman taking guard';
       this.broadcast();
-      const b = this.bowler();
-      if (!b) return;
-      if (b.bot) {
-        this.later(700, () => {
-          const lengths = ['yorker', 'full', 'good', 'good', 'short'];
-          this.setDelivery(b.id, {
-            line: rand(-0.75, 0.75), length: pick(lengths),
-            type: pick(['pace', 'swing', 'spin', 'slower']), release: rand(0.22, 0.88)
-          });
-        });
-      } else {
-        this.later(8000, () => {
-          if (this.phase === 'delivery') this.setDelivery(b.id, { line: rand(-0.4, 0.4), length: 'good', type: 'pace', release: 0.3 });
-        });
-      }
+
+      if (!this.bowler()) return;
+      if (this.batsman.ready) this.armBowler();
+      else this.later(5000, () => {
+        if (this.phase === 'delivery' && !this.batsman.ready) {
+          this.batsman.ready = true;
+          this.broadcast();
+          this.armBowler();
+        }
+      });
     }
 
     setDelivery(playerId, d) {
@@ -965,6 +1009,7 @@
         phase: this.phase, format: this.format, overs: this.overs, code: this.code,
         innings: this.innings, balls: this.balls, target: this.target,
         batTeam: this.batTeam, freeHit: this.freeHit,
+        batsman: this.batsman || { x: 0, y: 0, ready: true },
         teams: this.teams.map((t) => ({
           name: t.name,
           score: t.score,

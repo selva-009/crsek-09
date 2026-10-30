@@ -392,6 +392,13 @@
       out.tilt = 0;
       // bat stays on the swing plane rather than clipping the body
       if (person.userData.joints && person.userData.joints.bat) person.userData.joints.bat.rotation.z = 0.2 + swing * (type === 'sweep' ? 1.1 : 0.35);
+    } else if (state === 'idle') {
+      // standing, waiting to take guard
+      out.torsoX = 0.04 + breathe;
+      out.armLX = -0.10; out.armRX = -0.12;
+      out.elbowL = 0.18; out.elbowR = 0.20;
+      out.hipLX = 0.04; out.hipRX = -0.04;
+      out.kneeL = 0.08; out.kneeR = 0.08;
     } else if (state === 'walk') {
       const sw = Math.sin(t * 6 + person.userData.phase);
       out.hipLX = sw * 0.42; out.hipRX = -sw * 0.42;
@@ -832,7 +839,8 @@
       if (striker.userData.joints) striker.userData.joints.torso.material.color.set(strikerP.kit || '#7fd1ae');
       if (nonStriker.userData.joints) nonStriker.userData.joints.torso.material.color.set(nsP.kit || '#7fd1ae');
 
-      placePerson(striker, 0.42, 8.9, Math.PI, state.strikerId === myPid);
+      const guard = state.batsman || { x: 0, y: 0, ready: true };
+      placePerson(striker, 0.42 + (guard.x || 0), 8.9 + (guard.y || 0), Math.PI, state.strikerId === myPid);
       placePerson(nonStriker, -0.55, -8.9, 0, state.nonStrikerId === myPid);
 
       if (swing) {
@@ -844,6 +852,10 @@
           else animate(striker, 'swing', t, dt, { k: k, type: swing.type, foot: swing.foot });
           striker.rotation.y = Math.PI + (swing.dir * 0.5) * Math.PI / 180;
         }
+      } else if (guard.ready === false) {
+        // standing up, waiting to take guard
+        if (striker.userData.drive) striker.userData.drive('idle', t, dt);
+        else animate(striker, 'idle', t, dt);
       } else if (striker.userData.drive) striker.userData.drive('stance', t, dt);
       else animate(striker, 'stance', t, dt);
       if (nonStriker.userData.drive) nonStriker.userData.drive('stance', t, dt);
