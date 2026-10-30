@@ -356,15 +356,18 @@
     const breathe = Math.sin(t * 1.7 + person.userData.phase) * 0.02;
 
     if (state === 'stance') {
-      out.torsoX = 0.10 + breathe;
-      out.hipsY = 0.92;
-      out.kneeL = 0.18; out.kneeR = 0.18;
-      out.hipLX = -0.12; out.hipRX = 0.10;
-      out.armRX = -0.55 + Math.sin(t * 1.3) * 0.05;
-      out.elbowR = 0.75;
-      out.armLX = -0.35;
-      out.elbowL = 0.45;
-      out.torsoY = -0.22;
+      // a real batting stance: side-on to the bowler, knees bent, hands high with
+      // the bat cocked behind the back leg, weight on the balls of the feet
+      out.torsoX = 0.20 + breathe;
+      out.torsoY = -0.55;
+      out.hipsY = 0.86;
+      out.kneeL = 0.42; out.kneeR = 0.34;
+      out.hipLX = -0.30; out.hipRX = 0.16;
+      out.armRX = -1.20 + Math.sin(t * 1.3) * 0.06;
+      out.elbowR = 1.30;
+      out.armLX = -0.62;
+      out.elbowL = 0.95;
+      out.armLZ = 0.22; out.armRZ = -0.18;
     } else if (state === 'swing') {
       const k = Math.min(1, (extra && extra.k != null) ? extra.k : 0);
       const type = (extra && extra.type) || 'drive';
@@ -815,8 +818,12 @@
         }
       }
 
-      if (state.phase === 'flight') runUp = Math.min(1, runUp + dt * 2.4);
-      else if (state.phase === 'delivery' || state.phase === 'ready') runUp = Math.max(0, runUp - dt * 1.5);
+      // run-up happens during 'delivery' (before the ball is released), then the
+      // action completes on release and settles into the follow-through
+      if (state.phase === 'delivery') runUp = Math.min(1, runUp + dt / 0.75);
+      else if (state.phase === 'flight') runUp = 1;
+      else if (state.phase === 'inplay' || state.phase === 'result') runUp = Math.max(0.62, runUp - dt * 0.9);
+      else runUp = Math.max(0, runUp - dt * 1.6);
 
       // striker / non-striker
       const batTeam = state.teams[state.batTeam];
@@ -843,13 +850,19 @@
       else animate(nonStriker, 'stance', t, dt);
 
       // bowler run-up and release
-      const bowlerZ = -16 + runUp * 5;
+      const bowlerZ = -20 + runUp * 8.6;      // top of the mark to the crease
       placePerson(bowler, 0.6, bowlerZ, Math.PI, state.bowlerId === myPid);
-      if (runUp > 0.02) {
-        if (bowler.userData.drive) bowler.userData.drive('bowl', t, dt, { k: runUp });
-        else animate(bowler, 'bowl', t, dt, { k: runUp });
-      } else if (bowler.userData.drive) bowler.userData.drive(state.phase === 'inplay' ? 'run' : 'stance', t, dt);
-      else animate(bowler, state.phase === 'inplay' ? 'idle' : 'stance', t, dt);
+      if (runUp > 0.02 && runUp < 0.78) {
+        // running in to bowl
+        if (bowler.userData.drive) bowler.userData.drive('run', t, dt);
+        else animate(bowler, 'run', t, dt);
+      } else if (runUp >= 0.78) {
+        // gather, arm over, follow through
+        const k = Math.min(1, (runUp - 0.78) / 0.22);
+        if (bowler.userData.drive) bowler.userData.drive('bowl', t, dt, { k: k });
+        else animate(bowler, 'bowl', t, dt, { k: k });
+      } else if (bowler.userData.drive) bowler.userData.drive('stance', t, dt);
+      else animate(bowler, 'stance', t, dt);
 
       // fielders (keeper handled separately so it can wear pads)
       const fs = state.fielders || [];
@@ -933,6 +946,11 @@
         const up = clamp(19 + ballDist * 0.22, 19, 34);
         targetPos.set(bx * 0.45, up, -back);
         targetLook.set(bx * 0.5, 1.5, (10 + by) / 2 + 2);
+      } else if (cam.mode === 'side') {
+        // QA view: the striker from the off side, to check stance and bat path
+        const sx = striker.position.x, sz = striker.position.z;
+        targetPos.set(sx + 3.2, 1.55, sz + 0.6);
+        targetLook.set(sx, 1.0, sz);
       } else if (cam.mode === 'portrait') {
         // tight on the striker: used for checking character detail
         const sx = striker.position.x, sz = striker.position.z;
