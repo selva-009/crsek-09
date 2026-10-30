@@ -471,6 +471,7 @@
       case 'cancel': app.runner.cancelRun(playerPid); break;
       case 'ready': app.runner.setReady(playerPid); break;
       case 'batmove': app.runner.moveBatsman(playerPid, p.x, p.y); break;
+      case 'field': app.runner.setFieldPreset(playerPid, p.preset); break;
       case 'bat': if (app.runner.captainId === playerPid) app.runner.chooseBat(!!p.bat); break;
     }
   }
@@ -590,6 +591,52 @@
     if (app.runner && app.isHost) app.runner.resume();
     $('pauseOverlay').classList.add('hidden');
   }
+  // ---------- field setting (captain) ----------
+  const FIELD_PRESETS = [['attacking', 'Attacking'], ['balanced', 'Balanced'], ['defensive', 'Defensive'],
+    ['spin', 'Spin'], ['fast', 'Fast'], ['boundary', 'Boundary']];
+
+  function drawFieldMap(st) {
+    const svg = $('fieldMap');
+    if (!svg || !st) return;
+    const C = 100, R = 92, R30 = 44;
+    let h = '<circle cx="100" cy="100" r="' + R + '" fill="#14432a" stroke="#2fbf71" stroke-width="1.5"/>';
+    h += '<circle cx="100" cy="100" r="' + R30 + '" fill="none" stroke="rgba(255,255,255,0.25)" stroke-dasharray="3 3"/>';
+    h += '<rect x="97" y="86" width="6" height="28" fill="#cbb287"/>';
+    (st.fielders || []).forEach((f) => {
+      const px = C + (f.x / 70) * R;
+      const py = C + ((f.y - 6) / 70) * R;
+      h += '<circle cx="' + px.toFixed(1) + '" cy="' + py.toFixed(1) + '" r="' + (f.keeper ? 4.5 : 4) +
+        '" fill="' + (f.keeper ? '#f0b429' : (f.ownerId ? '#4fc3f7' : '#e8eef2')) + '"/>';
+    });
+    h += '<circle cx="' + (C + (0 / 70) * R) + '" cy="' + (C + ((10 - 6) / 70) * R) + '" r="2.5" fill="#ff5a4d"/>';
+    svg.innerHTML = h;
+  }
+
+  function openField() {
+    const st = app.state;
+    if (!st) return;
+    const cap = st.fieldCaptainId;
+    const mine = cap && cap === app.pid;
+    $('fieldWho').textContent = mine
+      ? 'You are the fielding captain' + (st.powerplay ? ' · powerplay: only two out' : '')
+      : 'Only the fielding captain can change this';
+    $('fieldPresets').innerHTML = FIELD_PRESETS.map(([k, label]) =>
+      '<button class="gbtn' + (st.fieldPreset === k ? ' sel' : '') + '" data-preset="' + k + '"' +
+      (mine ? '' : ' disabled') + '>' + label + '</button>').join('');
+    drawFieldMap(st);
+    $('fieldSheet').classList.remove('hidden');
+  }
+
+  $('fieldBtn').onclick = openField;
+  $('fieldClose').onclick = () => $('fieldSheet').classList.add('hidden');
+  $('fieldPresets').addEventListener('pointerup', (e) => {
+    const b = e.target.closest('[data-preset]');
+    if (!b || b.disabled) return;
+    sendIntent('field', { preset: b.dataset.preset });
+    $('fieldSheet').classList.add('hidden');
+    toast('Field: ' + b.textContent);
+  });
+
   $('pauseBtn').onclick = () => {
     if (!app.isHost) { toast('Only the host can pause a live match'); return; }
     if (app.state && app.state.paused) resumeMatch(); else pauseMatch();

@@ -138,6 +138,7 @@
     <div class="match-actions">
       <button class="icon-btn" id="scorecardBtn">☰</button>
       <button class="icon-btn" id="chatBtn">💬</button>
+      <button class="icon-btn" id="fieldBtn" title="Field">◇</button>
       <button class="icon-btn" id="pauseBtn" title="Pause">❚❚</button>
       <button class="icon-btn" id="camBtn" title="Camera">◎</button>
       <button class="icon-btn view-btn" id="viewBtn" title="3D / 2D">3D</button>
@@ -208,6 +209,16 @@
       <div class="chat-grid" id="chatGrid"></div>
     </div>
   </div>
+  <div class="sheet hidden" id="fieldSheet">
+    <div class="sheet-inner">
+      <h3>Field setting</h3>
+      <p class="fine" id="fieldWho">Captain only</p>
+      <svg id="fieldMap" viewBox="0 0 200 200" width="100%" height="200"></svg>
+      <div class="btns four" id="fieldPresets"></div>
+      <button class="btn wide" id="fieldClose">Close</button>
+    </div>
+  </div>
+
   <div class="sheet hidden" id="settings">
     <div class="sheet-inner">
       <h3>Settings</h3>

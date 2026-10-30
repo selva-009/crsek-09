@@ -473,3 +473,10 @@ input:focus { border-color: var(--accent); }
   background: rgba(8, 24, 16, 0.7); border: 1px dashed var(--line);
   border-radius: 12px; padding: 10px; text-align: center;
 }
+
+/* ---------- field sheet ---------- */
+#fieldMap { display: block; margin: 6px auto 10px; background: rgba(6, 20, 13, 0.6); border-radius: 12px; }
+#fieldPresets { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 10px; }
+#fieldPresets .gbtn { font-size: 12px; padding: 10px 6px; }
+#fieldPresets .gbtn.sel { border-color: var(--accent); color: var(--accent-2); background: rgba(47, 191, 113, 0.14); }
+#fieldPresets .gbtn[disabled] { opacity: 0.45; }

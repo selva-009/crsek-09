@@ -10,6 +10,17 @@
 
   // Field spots in metres. Origin = centre of pitch. Batsman stands at (0, +10)
   // and faces -y (towards the bowler). Angle 0 = straight down the ground.
+  // radius overrides per preset (metres from the batsman)
+  const FIELD_PRESETS = {
+    balanced:  {},
+    attacking: { slip: 11, point: 22, cover: 24, midoff: 22, midon: 22, midwicket: 24, square: 22, fineleg: 30, longon: 44, longoff: 44, deepcover: 46, deepmidwicket: 46 },
+    defensive: { slip: 14, point: 30, cover: 34, midoff: 32, midon: 32, midwicket: 34, square: 30, fineleg: 46, longon: 56, longoff: 56, deepcover: 58, deepmidwicket: 58 },
+    spin:      { slip: 11, point: 20, cover: 22, midoff: 24, midon: 24, midwicket: 20, square: 18, fineleg: 34, longon: 48, longoff: 46, deepcover: 44, deepmidwicket: 44 },
+    fast:      { slip: 12, point: 26, cover: 28, midoff: 26, midon: 26, midwicket: 26, square: 24, fineleg: 44, longon: 50, longoff: 50, deepcover: 48, deepmidwicket: 48 },
+    boundary:  { slip: 14, point: 40, cover: 44, midoff: 40, midon: 40, midwicket: 44, square: 40, fineleg: 56, longon: 60, longoff: 60, deepcover: 60, deepmidwicket: 60 }
+  };
+  const PRESET_NAMES = { balanced: 'Balanced', attacking: 'Attacking', defensive: 'Defensive', spin: 'Spin', fast: 'Fast bowling', boundary: 'Boundary protection' };
+
   const FIELD_SPOTS = [
     { key: 'keeper', name: 'Keeper', ang: 180, r: 13, keeper: true },
     { key: 'slip', name: 'Slip', ang: 158, r: 11 },
@@ -106,6 +117,8 @@
       this.pendingReview = null;
       this.lastTracking = null;
       this.batsman = { x: 0, y: 0, ready: false };
+      this.fieldPreset = 'balanced';
+      this.captains = [];          // filled in start(), once the teams exist
       this._bowlArmed = false;
       this.partnerRuns = 0;
       this.partnerBalls = 0;
@@ -114,6 +127,13 @@
     }
 
     // ---------- helpers ----------
+    captainOf(teamIdx) {
+      const t = this.teams[teamIdx];
+      if (!t) return null;
+      const h = t.players.find((p) => !p.bot) || t.players[0];
+      return h ? h.id : null;
+    }
+
     bat() { return this.teams[this.batTeam]; }
     bowlTeam() { return this.teams[1 - this.batTeam]; }
     striker() { return this.bat().players[this.strikerIdx]; }
@@ -189,6 +209,11 @@
 
     // ---------- setup ----------
     start() {
+      // each side's captain is its first human player, or its first player if it is all bots
+      this.captains = (this.teams || []).map((t) => {
+        const h = t.players.find((p) => !p.bot) || t.players[0];
+        return h ? h.id : null;
+      });
       this.placeField();
       this.startFieldLoop();
       if (this.forceBatFirst) {
@@ -266,18 +291,52 @@
       this.bowlerIdx = chosen;
     }
 
+    inPowerplay() {
+      const pp = Math.max(1, Math.ceil(this.overs * 0.3));
+      return Math.floor(this.balls / 6) < pp;
+    }
+
+    setFieldPreset(playerId, preset) {
+      const bt = this.bowlTeam();
+      const cap = this.captainOf(1 - this.batTeam);
+      if (cap && cap !== playerId) return;               // only the captain may change the field
+      if (!FIELD_PRESETS[preset]) return;
+      if (this.phase === 'inplay' || this.phase === 'flight') return;  // between deliveries only
+      this.fieldPreset = preset;
+      this.placeField();
+      this.broadcast();
+      this.emit('field', { preset: preset, name: PRESET_NAMES[preset] || preset });
+    }
+
     placeField() {
       const bt = this.bowlTeam();
       const humans = bt.players.filter((p) => !p.bot);
+      const overrides = FIELD_PRESETS[this.fieldPreset] || {};
+      const pp = this.inPowerplay();
       this.fielders = FIELD_SPOTS.map((s) => {
-        const hx = Math.sin((s.ang * Math.PI) / 180) * s.r;
-        const hy = BATSMAN_POS.y - Math.cos((s.ang * Math.PI) / 180) * s.r;
+        let r = overrides[s.key] != null ? overrides[s.key] : s.r;
+        const hx0 = Math.sin((s.ang * Math.PI) / 180) * r;
+        const hy0 = BATSMAN_POS.y - Math.cos((s.ang * Math.PI) / 180) * r;
+        const hx = hx0;
+        const hy = hy0;
         return {
           key: s.key, name: s.name, keeper: !!s.keeper,
           x: hx, y: hy, homeX: hx, homeY: hy,
           ownerId: null, bot: true
         };
       });
+      if (pp) {
+        // powerplay: at most two fielders outside the 30-yard circle
+        const outside = this.fielders
+          .filter((f) => !f.keeper && Math.hypot(f.homeX, f.homeY - BATSMAN_POS.y) > 27)
+          .sort((a, c) => Math.hypot(c.homeX, c.homeY - BATSMAN_POS.y) - Math.hypot(a.homeX, a.homeY - BATSMAN_POS.y));
+        outside.slice(2).forEach((f) => {
+          const ang = Math.atan2(f.homeX, -(f.homeY - BATSMAN_POS.y));
+          f.homeX = Math.sin(ang) * 25;
+          f.homeY = BATSMAN_POS.y - Math.cos(ang) * 25;
+          f.x = f.homeX; f.y = f.homeY;
+        });
+      }
       const free = this.fielders.filter((f) => !f.keeper).sort((a, b) => b.y - a.y);
       humans.forEach((p, i) => {
         const f = free[i % free.length];
@@ -1049,6 +1108,10 @@
         innings: this.innings, balls: this.balls, target: this.target,
         batTeam: this.batTeam, freeHit: this.freeHit,
         batsman: this.batsman || { x: 0, y: 0, ready: true },
+        fieldPreset: this.fieldPreset,
+        powerplay: this.inPowerplay(),
+        captains: [this.captainOf(0), this.captainOf(1)],
+        fieldCaptainId: this.captainOf(1 - this.batTeam),
         teams: this.teams.map((t) => ({
           name: t.name,
           score: t.score,
