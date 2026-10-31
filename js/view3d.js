@@ -536,16 +536,25 @@
     scene.add(ground);
 
     const rope = new THREE.Mesh(
-      new THREE.TorusGeometry(66, 0.28, 8, 96),
-      new THREE.MeshStandardMaterial({ color: 0xf5f7f8, roughness: 0.5 })
+      new THREE.TorusGeometry(66, 0.55, 10, 128),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35, emissive: 0x666666, emissiveIntensity: 0.5 })
     );
     rope.rotation.x = -Math.PI / 2;
-    rope.position.y = 0.12;
+    rope.position.y = 0.45;
     scene.add(rope);
+
+    // painted boundary line on the grass, so the rope reads from any camera
+    const bLine = new THREE.Mesh(
+      new THREE.RingGeometry(64.6, 66.0, 128),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, side: THREE.DoubleSide })
+    );
+    bLine.rotation.x = -Math.PI / 2;
+    bLine.position.y = 0.03;
+    scene.add(bLine);
 
     const inner = new THREE.Mesh(
       new THREE.RingGeometry(26.8, 27.1, 64),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, side: THREE.DoubleSide })
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, side: THREE.DoubleSide })
     );
     inner.rotation.x = -Math.PI / 2;
     inner.position.y = 0.04;
@@ -588,16 +597,33 @@
 
     // ---- stands ----
     const crowd = crowdTexture(THREE);
-    [[70, 10, 0x101a24], [78, 16, 0x0c141d], [86, 22, 0x0a1119]].forEach(([r, h, col], i) => {
+    // stepped tiers: each ring sits higher and further back than the last
+    [[69, 5, 0x243544], [74, 9, 0x1e2c3a], [80, 14, 0x1a2632], [87, 19, 0x16202a]].forEach(([r, h, col], i) => {
       const shell = new THREE.Mesh(
         new THREE.CylinderGeometry(r, r + 4, h, 64, 1, true),
-        i === 0
-          ? new THREE.MeshStandardMaterial({ map: crowd, color: 0xffffff, roughness: 0.9, side: THREE.DoubleSide })
+        i <= 1
+          ? new THREE.MeshStandardMaterial({ map: crowd, color: 0xffffff, roughness: 0.85, side: THREE.DoubleSide })
           : new THREE.MeshStandardMaterial({ color: col, roughness: 0.95, side: THREE.DoubleSide })
       );
       shell.position.y = h / 2 - 1;
       scene.add(shell);
+      // white rim on each tier so the steps read as terraces
+      const rim = new THREE.Mesh(
+        new THREE.TorusGeometry(r + 0.2, 0.12, 6, 96),
+        new THREE.MeshStandardMaterial({ color: 0x9fb4c4, roughness: 0.7 })
+      );
+      rim.rotation.x = -Math.PI / 2;
+      rim.position.y = h - 1;
+      scene.add(rim);
     });
+    // roof over the back of the stands
+    const roof = new THREE.Mesh(
+      new THREE.TorusGeometry(90, 1.6, 8, 96),
+      new THREE.MeshStandardMaterial({ color: 0x33465a, roughness: 0.9 })
+    );
+    roof.rotation.x = -Math.PI / 2;
+    roof.position.y = 19.5;
+    scene.add(roof);
 
     // floodlights
     [[-52, -52], [52, -52], [-52, 52], [52, 52]].forEach(([x, z]) => {
@@ -932,7 +958,11 @@
       // how far the ball is from the batsman drives how wide the shot is framed
       const ballDist = b ? Math.hypot(bx, by - 10) : 0;
 
-      if (live && b && (cam.mode === 'broadcast' || cam.mode === 'action')) {
+      if (catchCam && performance.now() < catchCam.until) {
+        // sit behind the catcher so the take is on screen
+        targetPos.set(catchCam.x * 0.8, 6.5, catchCam.y - 9);
+        targetLook.set(catchCam.x, 1.1, catchCam.y);
+      } else if (live && b && cam.mode !== 'top' && cam.mode !== 'portrait' && cam.mode !== 'side') {
         // action camera: frame the ball together with the two closest fielders,
         // so the chase is always on screen even on a narrow portrait phone
         const near = (fs || [])
@@ -949,9 +979,9 @@
       } else if (cam.mode === 'batter') {
         // over the striker's shoulder down the pitch; pulls back as the ball flies away
         // offset to the off side so the striker sits clear of the shot buttons
-        const back = 14.5 + Math.min(4, ballDist * 0.12);
-        targetPos.set(0.4 + bx * 0.2, 4.8 + Math.min(1.5, ballDist * 0.06), back);
-        targetLook.set(1.5 + bx * 0.35, 1.05, live ? Math.min(8, (10 + by) / 2) : 1.5);
+        const back = 19 + Math.min(5, ballDist * 0.14);
+        targetPos.set(0.5 + bx * 0.2, 8.2 + Math.min(2, ballDist * 0.07), back);
+        targetLook.set(1.2 + bx * 0.35, 0.9, live ? Math.min(10, (10 + by) / 2) : -4);
       } else if (cam.mode === 'broadcast') {
         // follows the ball so the batter, ball and chasing fielders stay in frame
         const back = clamp(30 + ballDist * 0.4, 30, 50);
@@ -1001,8 +1031,13 @@
 
     let swing = null;
     let catchPlay = null;
+    let catchCam = null;      // { until, x, y } — swings the camera onto the catch
     let catchEnv = 0;
     let catchElapsed = 0;
+
+    function focusCatch(x, y) {
+      catchCam = { until: performance.now() + 1700, x: x, y: y };
+    }
 
     function playCatch() {
       if (global.CatchAnim && global.CatchAnim.ready) {
@@ -1021,7 +1056,7 @@
       };
     }
 
-    return { usingGLB: useGLB, renderer, scene, camera, resize, render, setCameraMode, setAutoCamera, cameraMode, setPreview, clearPreview, setReviewPath, clearReviewPath, setQuality, playCatch, onShot, dispose() { renderer.dispose(); } };
+    return { usingGLB: useGLB, renderer, scene, camera, resize, render, setCameraMode, setAutoCamera, cameraMode, setPreview, clearPreview, setReviewPath, clearReviewPath, setQuality, playCatch, focusCatch, onShot, dispose() { renderer.dispose(); } };
   }
 
   global.View3D = { create };

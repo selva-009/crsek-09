@@ -501,7 +501,12 @@
     }
     else if (type === 'throw') { blip(260, 0.07, 'square'); toast(p.hit ? 'Direct hit!' : 'Throw comes in'); }
     else if (type === 'result') {
-      if (p.kind === 'caught' && app.view3d && app.view3d.playCatch) app.view3d.playCatch();
+      if (p.kind === 'caught' && app.view3d) {
+        if (app.view3d.playCatch) app.view3d.playCatch();
+        // swing the camera onto whoever took it
+        const st = app.state, bl = st && st.ball;
+        if (bl && app.view3d.focusCatch) app.view3d.focusCatch(bl.x, bl.y);
+      }
       flash(p.text);
       if (p.kind === 'six' || p.kind === 'four') blip(680, 0.16, 'sine');
       else if (p.wicket) blip(120, 0.22, 'sawtooth');
