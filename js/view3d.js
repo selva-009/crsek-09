@@ -358,16 +358,16 @@
     if (state === 'stance') {
       // a real batting stance: side-on to the bowler, knees bent, hands high with
       // the bat cocked behind the back leg, weight on the balls of the feet
-      out.torsoX = 0.20 + breathe;
-      out.torsoY = -0.55;
-      out.hipsY = 0.86;
-      out.kneeL = 0.42; out.kneeR = 0.34;
-      out.hipLX = -0.30; out.hipRX = 0.16;
-      out.armRX = -1.20 + Math.sin(t * 1.3) * 0.06;
-      out.elbowR = 1.30;
-      out.armLX = -0.62;
-      out.elbowL = 0.95;
-      out.armLZ = 0.22; out.armRZ = -0.18;
+      out.torsoX = 0.30 + breathe;          // crouched over the bat
+      out.torsoY = -0.85;                    // shoulders side-on to the bowler
+      out.hipsY = 0.78;                      // sitting into the stance
+      out.kneeL = 0.72; out.kneeR = 0.55;    // deep knee bend
+      out.hipLX = -0.45; out.hipRX = 0.28;
+      out.armRX = -1.85 + Math.sin(t * 1.3) * 0.08;   // bat cocked high behind the shoulder
+      out.elbowR = 1.55;
+      out.armLX = -1.05;
+      out.elbowL = 1.15;
+      out.armLZ = 0.35; out.armRZ = -0.30;
     } else if (state === 'swing') {
       const k = Math.min(1, (extra && extra.k != null) ? extra.k : 0);
       const type = (extra && extra.type) || 'drive';
@@ -505,7 +505,7 @@
     renderer.toneMapping = THREE.NoToneMapping;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x050f0a);
+    scene.background = new THREE.Color(0x16222e);
     scene.fog = new THREE.Fog(0x050f0a, 130, 340);
 
     const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 600);
@@ -598,7 +598,7 @@
     // ---- stands ----
     const crowd = crowdTexture(THREE);
     // stepped tiers: each ring sits higher and further back than the last
-    [[69, 5, 0x243544], [74, 9, 0x1e2c3a], [80, 14, 0x1a2632], [87, 19, 0x16202a]].forEach(([r, h, col], i) => {
+    [[69, 5, 0x3d5468], [74, 9, 0x354a5c], [80, 14, 0x2d4051], [87, 19, 0x273746]].forEach(([r, h, col], i) => {
       const shell = new THREE.Mesh(
         new THREE.CylinderGeometry(r, r + 4, h, 64, 1, true),
         i <= 1
@@ -853,7 +853,7 @@
 
       // run-up happens during 'delivery' (before the ball is released), then the
       // action completes on release and settles into the follow-through
-      if (state.phase === 'delivery') runUp = Math.min(1, runUp + dt / 0.75);
+      if (state.phase === 'delivery') runUp = Math.min(1, runUp + dt / 1.7);
       else if (state.phase === 'flight') runUp = 1;
       else if (state.phase === 'inplay' || state.phase === 'result') runUp = Math.max(0.62, runUp - dt * 0.9);
       else runUp = Math.max(0, runUp - dt * 1.6);
@@ -979,9 +979,10 @@
       } else if (cam.mode === 'batter') {
         // over the striker's shoulder down the pitch; pulls back as the ball flies away
         // offset to the off side so the striker sits clear of the shot buttons
-        const back = 19 + Math.min(5, ballDist * 0.14);
-        targetPos.set(0.5 + bx * 0.2, 8.2 + Math.min(2, ballDist * 0.07), back);
-        targetLook.set(1.2 + bx * 0.35, 0.9, live ? Math.min(10, (10 + by) / 2) : -4);
+        // broadcast-style batting view: high behind the striker, whole pitch in frame
+        const back = 17 + Math.min(4, ballDist * 0.12);
+        targetPos.set(1.3 + bx * 0.15, 6.6 + Math.min(1.5, ballDist * 0.05), back);
+        targetLook.set(0.1 + bx * 0.2, 1.1, -3);
       } else if (cam.mode === 'broadcast') {
         // follows the ball so the batter, ball and chasing fielders stay in frame
         const back = clamp(30 + ballDist * 0.4, 30, 50);

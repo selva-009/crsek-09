@@ -371,7 +371,7 @@
       if (!b) return;
       this._bowlArmed = true;
       if (b.bot) {
-        this.later(700, () => {
+        this.later(1900, () => {
           if (this.phase !== 'delivery') return;
           const d = pick(['good', 'good', 'full', 'short', 'yorker']);
           this.setDelivery(b.id, {
