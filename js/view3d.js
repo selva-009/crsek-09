@@ -96,7 +96,7 @@
     root.add(hips);
 
     // ---- torso: chest wider than waist, with shoulders ----
-    const torso = new THREE.Mesh(geo('torso', () => new THREE.CylinderGeometry(0.205, 0.155, 0.52, 12, 1)), kitMat);
+    const torso = new THREE.Mesh(geo('torso', () => new THREE.CylinderGeometry(0.225, 0.175, 0.52, 12, 1)), kitMat);
     torso.scale.z = 0.72;
     torso.position.y = 0.26;
     torso.castShadow = true;
@@ -132,7 +132,7 @@
     headGroup.position.y = 0.60;
     hips.add(headGroup);
 
-    const neck = capsule('neck', 0.052, 0.058, 0.09, skinMat);
+    const neck = capsule('neck', 0.062, 0.068, 0.09, skinMat);
     neck.position.y = 0.05;
     headGroup.add(neck);
 
@@ -219,13 +219,13 @@
       const shoulder = new THREE.Group();
       shoulder.position.set(side * 0.205, 0.44, 0);
       hips.add(shoulder);
-      const upper = capsule('upperArm', 0.052, 0.044, 0.28, skinMat);
+      const upper = capsule('upperArm', 0.070, 0.058, 0.28, skinMat);
       upper.position.y = -0.14;
       shoulder.add(upper);
       const elbow = new THREE.Group();
       elbow.position.y = -0.28;
       shoulder.add(elbow);
-      const fore = capsule('foreArm', 0.042, 0.034, 0.26, skinMat);
+      const fore = capsule('foreArm', 0.056, 0.044, 0.26, skinMat);
       fore.position.y = -0.13;
       elbow.add(fore);
       const handMat = (role === 'bat' || isKeeper) ? padMat : skinMat;
@@ -250,13 +250,13 @@
       const hip = new THREE.Group();
       hip.position.set(side * 0.098, -0.03, 0);
       hips.add(hip);
-      const thigh = capsule('thigh', 0.078, 0.058, 0.40, trouserMat);
+      const thigh = capsule('thigh', 0.100, 0.076, 0.40, trouserMat);
       thigh.position.y = -0.20;
       hip.add(thigh);
       const knee = new THREE.Group();
       knee.position.y = -0.40;
       hip.add(knee);
-      const shin = capsule('shin', 0.052, 0.038, 0.40, trouserMat);
+      const shin = capsule('shin', 0.070, 0.050, 0.40, trouserMat);
       shin.position.y = -0.20;
       knee.add(shin);
       const ankle = new THREE.Group();
