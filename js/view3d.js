@@ -958,10 +958,17 @@
       // how far the ball is from the batsman drives how wide the shot is framed
       const ballDist = b ? Math.hypot(bx, by - 10) : 0;
 
+      const shotAge = inplayAt ? (performance.now() - inplayAt) / 1000 : 99;
+
       if (catchCam && performance.now() < catchCam.until) {
         // sit behind the catcher so the take is on screen
         targetPos.set(catchCam.x * 0.8, 6.5, catchCam.y - 9);
         targetLook.set(catchCam.x, 1.1, catchCam.y);
+      } else if (live && b && shotAge < 0.75 && cam.mode !== 'top' && cam.mode !== 'portrait' && cam.mode !== 'side') {
+        // stay with the batsman through the shot, panning onto the ball as it leaves
+        const k = Math.min(1, shotAge / 0.75);
+        targetPos.set(1.1 + bx * 0.18, 5.6 + k * 1.2, 16.5);
+        targetLook.set(bx * (0.25 + k * 0.5), 1.0 + Math.min(3, bz * 0.5), 10 - k * 9);
       } else if (live && b && cam.mode !== 'top' && cam.mode !== 'portrait' && cam.mode !== 'side') {
         // action camera: frame the ball together with the two closest fielders,
         // so the chase is always on screen even on a narrow portrait phone
@@ -1005,9 +1012,9 @@
       }
       // smooth, frame-rate independent easing — fast enough that the ball never
       // leaves the frame, slow enough that it never looks like a cut
-      const rate = live ? 9 : state.phase === 'flight' ? 7 : 4.5;
+      const rate = live ? 12 : state.phase === 'flight' ? 7 : 4.5;
       const k = 1 - Math.exp(-dt * rate);
-      if (camera.position.distanceTo(targetPos) > 6) camera.position.copy(targetPos);
+      if (camera.position.distanceTo(targetPos) > 26) camera.position.copy(targetPos);
       else camera.position.lerp(targetPos, k);
       tmp.copy(targetLook);
       cam.look.lerp(tmp, k);
@@ -1027,11 +1034,13 @@
         }
         frames = 0; frameAcc = 0;
       }
+      if (state.phase === 'inplay' && lastPhase !== 'inplay') inplayAt = performance.now();
       lastPhase = state.phase;
     }
 
     let swing = null;
     let catchPlay = null;
+    let inplayAt = 0;         // when the ball was struck, so the camera can stay on the shot
     let catchCam = null;      // { until, x, y } — swings the camera onto the catch
     let catchEnv = 0;
     let catchElapsed = 0;
